@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import dbRepo from "@/lib/db/repo";
 import { GenderTarget } from "@prisma/client";
 
+export const runtime = "nodejs";
+
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {

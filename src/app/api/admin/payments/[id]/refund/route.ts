@@ -4,6 +4,8 @@ import { adminRefundSchema } from "@/lib/validation/schemas";
 import { checkAdminAuth } from "@/lib/auth/rbac";
 import { createRazorpayRefund } from "@/lib/payments/razorpay";
 
+export const runtime = "nodejs";
+
 export const dynamic = "force-dynamic";
 
 export async function POST(

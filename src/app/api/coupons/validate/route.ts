@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import dbRepo from "@/lib/db/repo";
 import { z } from "zod";
 
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 const validateCouponSchema = z.object({
   code: z.string().min(1, "Coupon code is required"),
   subtotal: z.number().min(0, "Subtotal must be positive"),

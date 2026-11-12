@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { forgotPasswordSchema } from "@/lib/validation/schemas";
 import dbRepo from "@/lib/db/repo";
 
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();

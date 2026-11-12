@@ -3,6 +3,9 @@ import { resetPasswordSchema } from "@/lib/validation/schemas";
 import { hashPassword } from "@/lib/auth/password";
 import dbRepo from "@/lib/db/repo";
 
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();

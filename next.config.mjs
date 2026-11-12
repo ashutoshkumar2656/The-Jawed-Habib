@@ -4,6 +4,7 @@ const nextConfig = {
   poweredByHeader: false,
   compress: true,
   swcMinify: true,
+  optimizeFonts: false,
 
   experimental: {
     optimizePackageImports: ["lucide-react", "date-fns"],

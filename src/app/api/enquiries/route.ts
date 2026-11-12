@@ -3,6 +3,9 @@ import { enquirySchema } from "@/lib/validation/schemas";
 import dbRepo from "@/lib/db/repo";
 import { checkRateLimit } from "@/lib/security/rate-limit";
 
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 export async function POST(req: NextRequest) {
   try {
     const clientIp =

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { availabilityQuerySchema } from "@/lib/validation/schemas";
 import dbRepo from "@/lib/db/repo";
 
+export const runtime = "nodejs";
+
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {

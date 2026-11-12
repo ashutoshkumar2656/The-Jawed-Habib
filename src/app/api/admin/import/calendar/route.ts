@@ -4,6 +4,8 @@ import dbRepo from "@/lib/db/repo";
 import { importCalendarOverrides } from "@/lib/db/import-repo";
 import { generateCsv } from "@/lib/reports/exporter";
 
+export const runtime = "nodejs";
+
 export const dynamic = "force-dynamic";
 
 /**

@@ -3,6 +3,8 @@ import { checkAdminAuth } from "@/lib/auth/rbac";
 import fs from "fs/promises";
 import path from "path";
 
+export const runtime = "nodejs";
+
 export const dynamic = "force-dynamic";
 
 const ALLOWED_IMAGE_MIMES = new Set([

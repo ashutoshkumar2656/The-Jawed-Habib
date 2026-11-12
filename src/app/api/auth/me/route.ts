@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getRequestSessionUser } from "@/lib/auth/session";
 import dbRepo from "@/lib/db/repo";
 
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 export async function GET(req: NextRequest) {
   try {
     const session = getRequestSessionUser(req);

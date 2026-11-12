@@ -43,13 +43,19 @@ describe("Phase 1-17: Website Performance & Stability Optimization Suite", () =>
       expect(cssContent).not.toContain("@import url('https://fonts.googleapis.com");
     });
 
-    it("verifies RootLayout utilizes next/font/google with display swap", () => {
+    it("verifies RootLayout utilizes non-blocking font loading with display swap and system fallbacks", () => {
       const layoutPath = path.join(process.cwd(), "src/app/layout.tsx");
       const layoutContent = fs.readFileSync(layoutPath, "utf-8");
-      expect(layoutContent).toContain("from \"next/font/google\"");
-      expect(layoutContent).toContain("display: \"swap\"");
-      expect(layoutContent).toContain("variable: \"--font-playfair\"");
-      expect(layoutContent).toContain("variable: \"--font-sans\"");
+      expect(layoutContent).toContain("display=swap");
+      expect(layoutContent).toContain("fonts.gstatic.com");
+      expect(layoutContent).toContain("rel=\"preconnect\"");
+    });
+
+    it("verifies globals.css defines high-performance system font fallbacks", () => {
+      const cssPath = path.join(process.cwd(), "src/app/globals.css");
+      const cssContent = fs.readFileSync(cssPath, "utf-8");
+      expect(cssContent).toContain("--font-playfair");
+      expect(cssContent).toContain("--font-sans");
     });
   });
 

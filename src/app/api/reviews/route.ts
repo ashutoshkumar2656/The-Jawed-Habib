@@ -3,6 +3,9 @@ import { getRequestSessionUser } from "@/lib/auth/session";
 import { reviewSubmitSchema } from "@/lib/validation/schemas";
 import dbRepo from "@/lib/db/repo";
 
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 export async function GET() {
   try {
     const reviews = await dbRepo.getReviews(true); // approved only for public display

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import dbRepo from "@/lib/db/repo";
 import { z } from "zod";
 
+export const runtime = "nodejs";
+
 export const dynamic = "force-dynamic";
 
 const holdRequestSchema = z.object({

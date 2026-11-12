@@ -28,6 +28,10 @@ yarn-error.log*
 .env.development.local
 .env.test.local
 .env.production.local
+.env*.local
+.env.neon
+.neon
+.neon/
 
 # Vercel
 .vercel
@@ -40,3 +44,4 @@ next-env.d.ts
 /prisma/client/
 prisma/*.db
 prisma/*.db-journal
+.env.neon

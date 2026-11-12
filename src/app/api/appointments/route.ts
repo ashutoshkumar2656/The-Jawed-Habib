@@ -10,6 +10,8 @@ import {
   sanitizeInput,
 } from "@/lib/security/rate-limit";
 
+export const runtime = "nodejs";
+
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {

@@ -3,6 +3,8 @@ import dbRepo from "@/lib/db/repo";
 import { adminRazorpaySettingsSchema } from "@/lib/validation/schemas";
 import { checkAdminAuth } from "@/lib/auth/rbac";
 
+export const runtime = "nodejs";
+
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {

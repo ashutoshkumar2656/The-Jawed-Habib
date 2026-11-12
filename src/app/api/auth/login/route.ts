@@ -6,6 +6,9 @@ import dbRepo from "@/lib/db/repo";
 import { SESSION_COOKIE_NAME } from "@/lib/auth/session";
 import { checkRateLimit } from "@/lib/security/rate-limit";
 
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 export async function POST(req: NextRequest) {
   try {
     const clientIp =

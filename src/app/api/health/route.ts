@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { BRAND_CONFIG } from "@/lib/constants/brand";
 import { getSanitizedEnvReport, validateEnv } from "@/lib/env";
 
+export const runtime = "nodejs";
+
 export const dynamic = "force-dynamic";
 
 export async function GET() {

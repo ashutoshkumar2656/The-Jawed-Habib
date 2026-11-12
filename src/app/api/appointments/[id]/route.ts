@@ -3,6 +3,9 @@ import { appointmentCancelSchema, appointmentRescheduleSchema } from "@/lib/vali
 import dbRepo from "@/lib/db/repo";
 import { getRequestSessionUser } from "@/lib/auth/session";
 
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 export async function GET(
   req: NextRequest,
   { params }: { params: { id: string } }

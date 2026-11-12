@@ -3,6 +3,8 @@ import dbRepo from "@/lib/db/repo";
 import { checkAdminAuth } from "@/lib/auth/rbac";
 import { collectRemainingPaymentSchema } from "@/lib/validation/schemas";
 
+export const runtime = "nodejs";
+
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {

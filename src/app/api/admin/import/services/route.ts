@@ -3,6 +3,8 @@ import { checkAdminAuth } from "@/lib/auth/rbac";
 import { importServices, importCategories, importPackages } from "@/lib/db/import-repo";
 import { generateCsv } from "@/lib/reports/exporter";
 
+export const runtime = "nodejs";
+
 export const dynamic = "force-dynamic";
 
 /**

@@ -5,6 +5,9 @@ import { signToken } from "@/lib/auth/jwt";
 import dbRepo from "@/lib/db/repo";
 import { SESSION_COOKIE_NAME } from "@/lib/auth/session";
 
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();

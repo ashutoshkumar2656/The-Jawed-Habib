@@ -3,6 +3,8 @@ import dbRepo from "@/lib/db/repo";
 import { testRazorpayConnection } from "@/lib/payments/razorpay";
 import { checkAdminAuth } from "@/lib/auth/rbac";
 
+export const runtime = "nodejs";
+
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {

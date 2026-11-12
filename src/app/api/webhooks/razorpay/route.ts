@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import dbRepo from "@/lib/db/repo";
 import { verifyRazorpayWebhookSignature } from "@/lib/payments/razorpay";
 
+export const runtime = "nodejs";
+
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {

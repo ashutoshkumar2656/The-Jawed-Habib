@@ -3,6 +3,8 @@ import { paymentVerifySchema } from "@/lib/validation/schemas";
 import dbRepo from "@/lib/db/repo";
 import { verifyRazorpayPaymentSignature } from "@/lib/payments/razorpay";
 
+export const runtime = "nodejs";
+
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
