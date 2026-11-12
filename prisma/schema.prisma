@@ -1,0 +1,787 @@
+// This is the Prisma schema file for The Jawed Habib Salon – Lalganj
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// -------------------------------------------------------------
+// ENUMS
+// -------------------------------------------------------------
+
+enum RoleType {
+  SUPER_ADMIN
+  ADMIN
+  MANAGER
+  STAFF
+  CUSTOMER
+}
+
+enum GenderTarget {
+  UNISEX
+  FEMALE
+  MALE
+  KIDS
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  REJECTED
+  NO_SHOW
+}
+
+enum PaymentStatus {
+  UNPAID
+  PARTIALLY_PAID
+  PAID
+  REFUNDED
+}
+
+enum PaymentGateway {
+  RAZORPAY
+  CASHFREE
+  PAYTM
+  MANUAL_CASH
+  MANUAL_UPI
+}
+
+enum PaymentTransactionStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+enum BookingSource {
+  ONLINE_WEBSITE
+  PHONE_CALL
+  WALK_IN
+  WHATSAPP
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+}
+
+enum EnquiryStatus {
+  NEW
+  CONTACTED
+  SCHEDULED
+  RESOLVED
+  SPAM
+}
+
+enum NotificationType {
+  BOOKING
+  REMINDER
+  PROMOTION
+  SYSTEM
+}
+
+// -------------------------------------------------------------
+// 1. User
+// -------------------------------------------------------------
+model User {
+  id              String           @id @default(cuid())
+  name            String
+  email           String?          @unique
+  phone           String           @unique
+  passwordHash    String?
+  roleId          String?
+  role            Role?            @relation(fields: [roleId], references: [id], onDelete: SetNull)
+  roleType        RoleType         @default(CUSTOMER)
+  avatarUrl       String?
+  isActive        Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  customerProfile CustomerProfile?
+  staff           Staff?
+  notifications   Notification[]
+  auditLogs       AuditLog[]
+
+  @@index([phone])
+  @@index([email])
+  @@index([roleType])
+}
+
+// -------------------------------------------------------------
+// 2. CustomerProfile
+// -------------------------------------------------------------
+model CustomerProfile {
+  id                  String               @id @default(cuid())
+  userId              String               @unique
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  alternatePhone      String?
+  dateOfBirth         DateTime?
+  anniversary         DateTime?
+  address             String?
+  notes               String?
+  totalVisits         Int                  @default(0)
+  totalSpent          Float                @default(0.0)
+  preferredStaffId    String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  appointments        Appointment[]
+  reviews             Review[]
+
+  @@index([userId])
+  @@index([totalSpent])
+}
+
+// -------------------------------------------------------------
+// 3. Role
+// -------------------------------------------------------------
+model Role {
+  id          String       @id @default(cuid())
+  name        RoleType     @unique
+  displayName String
+  description String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  users       User[]
+  permissions Permission[] @relation("RolePermissions")
+
+  @@index([name])
+}
+
+// -------------------------------------------------------------
+// 4. Permission
+// -------------------------------------------------------------
+model Permission {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  action      String   // e.g., "create", "read", "update", "delete", "manage"
+  subject     String   // e.g., "appointments", "services", "staff", "settings"
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  roles       Role[]   @relation("RolePermissions")
+
+  @@index([slug])
+  @@index([subject])
+}
+
+// -------------------------------------------------------------
+// 5. ServiceCategory
+// -------------------------------------------------------------
+model ServiceCategory {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  slug        String    @unique
+  description String?
+  imageUrl    String?
+  iconName    String?
+  sortOrder   Int       @default(0)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  services    Service[]
+
+  @@index([slug])
+  @@index([isActive])
+}
+
+// -------------------------------------------------------------
+// 6. Service
+// -------------------------------------------------------------
+model Service {
+  id                  String               @id @default(cuid())
+  name                String
+  slug                String               @unique
+  description         String?
+  price               Float
+  discountedPrice     Float?
+  durationMinutes     Int                  @default(30)
+  gender              GenderTarget         @default(UNISEX)
+  categoryId          String
+  category            ServiceCategory      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  imageUrl            String?
+  detailedDescription String?
+  priceDisplayType    String               @default("FIXED") // "FIXED", "STARTING_FROM", "CONTACT_FOR_PRICE"
+  isStartingPrice     Boolean              @default(false)
+  allowOnlineBooking  Boolean              @default(true)
+  allowAdvancePayment Boolean              @default(false)
+  depositType         String               @default("NO_DEPOSIT") // "NO_DEPOSIT", "FIXED", "PERCENTAGE", "FULL"
+  depositValue        Float                @default(0.0)
+  bufferTimeMinutes   Int                  @default(0)
+  sortOrder           Int                  @default(0)
+  additionalImages    String[]             @default([])
+  isPopular           Boolean              @default(false)
+  isFeatured          Boolean              @default(false)
+  isActive            Boolean              @default(true)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  staffServices       StaffService[]
+  appointmentServices AppointmentService[]
+  transformations     Transformation[]
+
+  @@index([categoryId])
+  @@index([slug])
+  @@index([isActive])
+  @@index([allowOnlineBooking, isActive])
+  @@index([categoryId, isActive])
+  @@index([isFeatured, isActive])
+}
+
+// -------------------------------------------------------------
+// 7. Staff
+// -------------------------------------------------------------
+model Staff {
+  id                String             @id @default(cuid())
+  userId            String             @unique
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  designation       String             // "Senior Hair Stylist", "Master Colorist", etc.
+  bio               String?
+  experienceYears   Int                @default(3)
+  specialties       String[]
+  rating            Float              @default(5.0)
+  workingDays       String[]           @default(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"])
+  startTime         String             @default("10:00")
+  endTime           String             @default("22:00")
+  isAvailable       Boolean            @default(true)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  staffServices     StaffService[]
+  appointments      Appointment[]
+  transformations   Transformation[]
+  availabilityRules AvailabilityRule[]
+  blockedSlots      BlockedSlot[]
+
+  @@index([userId])
+  @@index([isAvailable])
+}
+
+// -------------------------------------------------------------
+// 8. StaffService
+// -------------------------------------------------------------
+model StaffService {
+  id                   String   @id @default(cuid())
+  staffId              String
+  staff                Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  serviceId            String
+  service              Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  customDurationMinutes Int?
+  customPrice          Float?
+  createdAt            DateTime @default(now())
+
+  @@unique([staffId, serviceId])
+  @@index([staffId])
+  @@index([serviceId])
+}
+
+// -------------------------------------------------------------
+// 9. Appointment
+// -------------------------------------------------------------
+model Appointment {
+  id                  String               @id @default(cuid())
+  appointmentNumber   String               @unique
+  customerProfileId   String
+  customerProfile     CustomerProfile      @relation(fields: [customerProfileId], references: [id], onDelete: Restrict)
+  staffId             String?
+  staff               Staff?               @relation(fields: [staffId], references: [id], onDelete: SetNull)
+  status              AppointmentStatus    @default(PENDING)
+  source              BookingSource        @default(ONLINE_WEBSITE)
+  
+  appointmentDate     DateTime
+  startTime           String               // "10:30"
+  endTime             String               // "11:30"
+  
+  subtotal            Float
+  discountAmount      Float                @default(0.0)
+  totalAmount         Float
+  depositAmount       Float                @default(0.0)
+  remainingAmount     Float                @default(0.0)
+  depositType         String               @default("NO_DEPOSIT")
+  paymentStatus       PaymentStatus        @default(UNPAID)
+  paymentMethod       String?              // "CASH", "UPI", "CARD"
+  
+  couponCode          String?
+  holdToken           String?
+  notes               String?
+  adminNotes          String?
+  internalNotes       String?
+  
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  appointmentServices AppointmentService[]
+  packageId           String?
+  package             Package?             @relation(fields: [packageId], references: [id], onDelete: SetNull)
+  payments            PaymentRecord[]
+
+  @@index([customerProfileId])
+  @@index([staffId])
+  @@index([appointmentDate])
+  @@index([status])
+  @@index([paymentStatus])
+  @@index([appointmentDate, startTime])
+  @@index([createdAt])
+  @@index([packageId])
+  @@index([appointmentDate, status])
+  @@index([customerProfileId, status])
+}
+
+// -------------------------------------------------------------
+// 10. AppointmentService
+// -------------------------------------------------------------
+model AppointmentService {
+  id              String      @id @default(cuid())
+  appointmentId   String
+  appointment     Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  serviceId       String
+  service         Service     @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  price           Float
+  durationMinutes Int
+  createdAt       DateTime    @default(now())
+
+  @@index([appointmentId])
+  @@index([serviceId])
+}
+
+// -------------------------------------------------------------
+// 11. AvailabilityRule
+// -------------------------------------------------------------
+model AvailabilityRule {
+  id           String   @id @default(cuid())
+  staffId      String?
+  staff        Staff?   @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  dayOfWeek    Int      // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+  startTime    String   // "10:00"
+  endTime      String   // "22:00"
+  isWorkingDay Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([staffId])
+  @@index([dayOfWeek])
+}
+
+// -------------------------------------------------------------
+// 12. BlockedSlot
+// -------------------------------------------------------------
+model BlockedSlot {
+  id        String   @id @default(cuid())
+  staffId   String?
+  staff     Staff?   @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  date      DateTime
+  startTime String   // "14:00"
+  endTime   String   // "15:00"
+  reason    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([staffId])
+  @@index([date])
+}
+
+// -------------------------------------------------------------
+// 13. Review
+// -------------------------------------------------------------
+model Review {
+  id                String          @id @default(cuid())
+  customerProfileId String
+  customerProfile   CustomerProfile @relation(fields: [customerProfileId], references: [id], onDelete: Cascade)
+  rating            Int             @default(5)
+  title             String?
+  comment           String
+  isApproved        Boolean         @default(false)
+  isFeatured        Boolean         @default(false)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([customerProfileId])
+  @@index([isApproved])
+}
+
+// -------------------------------------------------------------
+// 14. GalleryImage
+// -------------------------------------------------------------
+model GalleryImage {
+  id        String   @id @default(cuid())
+  title     String
+  caption   String?
+  imageUrl  String
+  category  String   // e.g. "Salon Ambience", "Hair Styling", "Bridal", "Beard & Grooming"
+  isFeatured Boolean @default(false)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category])
+  @@index([isFeatured])
+}
+
+// -------------------------------------------------------------
+// 15. Transformation
+// -------------------------------------------------------------
+model Transformation {
+  id             String        @id @default(cuid())
+  title          String
+  description    String?
+  beforeImageUrl String
+  afterImageUrl  String
+  serviceId      String?
+  service        Service?      @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  staffId        String?
+  staff          Staff?        @relation(fields: [staffId], references: [id], onDelete: SetNull)
+  clientGender   GenderTarget  @default(UNISEX)
+  isFeatured     Boolean       @default(true)
+  sortOrder      Int           @default(0)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([serviceId])
+  @@index([staffId])
+  @@index([isFeatured])
+}
+
+// -------------------------------------------------------------
+// 16. Offer
+// -------------------------------------------------------------
+model Offer {
+  id              String       @id @default(cuid())
+  title           String
+  slug            String       @unique
+  description     String
+  discountType    DiscountType @default(PERCENTAGE)
+  discountValue   Float
+  bannerImageUrl  String?
+  validFrom       DateTime
+  validUntil      DateTime
+  isActive        Boolean      @default(true)
+  isFeatured      Boolean      @default(false)
+  termsConditions String[]
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([slug])
+  @@index([isActive])
+}
+
+// -------------------------------------------------------------
+// 17. Package
+// -------------------------------------------------------------
+model Package {
+  id              String   @id @default(cuid())
+  name            String
+  slug            String   @unique
+  description     String
+  price           Float
+  originalPrice   Float
+  durationMinutes Int      @default(90)
+  servicesList    String[]
+  imageUrl        String?
+  isFeatured      Boolean       @default(true)
+  isActive        Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  appointments    Appointment[]
+
+  @@index([slug])
+  @@index([isActive])
+}
+
+// -------------------------------------------------------------
+// 18. Enquiry
+// -------------------------------------------------------------
+model Enquiry {
+  id              String        @id @default(cuid())
+  name            String
+  phone           String
+  email           String?
+  serviceInterest String?
+  type            String        @default("GENERAL") // "GENERAL", "SERVICE", "CONSULTATION", "BRIDAL"
+  message         String
+  status          EnquiryStatus @default(NEW)
+  adminNotes      String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([phone])
+  @@index([status])
+  @@index([type])
+}
+
+// -------------------------------------------------------------
+// 19. Coupon
+// -------------------------------------------------------------
+model Coupon {
+  id            String       @id @default(cuid())
+  code          String       @unique
+  description   String?
+  discountType  DiscountType @default(PERCENTAGE)
+  discountValue Float
+  minOrderValue Float        @default(0.0)
+  maxDiscount   Float?
+  validFrom     DateTime
+  validUntil    DateTime
+  usageLimit    Int?
+  timesUsed     Int          @default(0)
+  isActive      Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([code])
+  @@index([isActive])
+}
+
+// -------------------------------------------------------------
+// 20. Video
+// -------------------------------------------------------------
+model Video {
+  id           String   @id @default(cuid())
+  title        String
+  description  String?
+  videoUrl     String
+  thumbnailUrl String?
+  category     String   @default("Transformations") // "Bridal", "Hair Makeover", "Salon Tour", "Styling"
+  isFeatured   Boolean  @default(false)
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([category])
+  @@index([isFeatured])
+}
+
+// -------------------------------------------------------------
+// 21. Brand
+// -------------------------------------------------------------
+model Brand {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  logoUrl     String?
+  category    String   @default("Cosmetics & Haircare")
+  description String?
+  isFeatured  Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isFeatured])
+}
+
+// -------------------------------------------------------------
+// 22. Faq
+// -------------------------------------------------------------
+model Faq {
+  id        String   @id @default(cuid())
+  question  String
+  answer    String
+  category  String   @default("General") // "Services", "Pricing", "Bridal", "Booking"
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category])
+  @@index([isActive])
+}
+
+// -------------------------------------------------------------
+// 24. Notification
+// -------------------------------------------------------------
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      NotificationType @default(SYSTEM)
+  isRead    Boolean          @default(false)
+  link      String?
+  createdAt DateTime         @default(now())
+
+  @@index([userId])
+  @@index([isRead])
+}
+
+// -------------------------------------------------------------
+// 25. SiteSetting
+// -------------------------------------------------------------
+model SiteSetting {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String
+  description String?
+  updatedAt   DateTime @updatedAt
+
+  @@index([key])
+}
+
+// -------------------------------------------------------------
+// 26. AuditLog
+// -------------------------------------------------------------
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String   // e.g. "USER_REGISTERED", "APPOINTMENT_CREATED", "APPOINTMENT_CANCELLED"
+  entity    String   // e.g. "Appointment", "User", "Review"
+  entityId  String?
+  details   String?  // JSON stringified metadata
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([entity])
+  @@index([createdAt])
+}
+
+// -------------------------------------------------------------
+// 27. PaymentRecord
+// -------------------------------------------------------------
+model PaymentRecord {
+  id                String                   @id @default(cuid())
+  appointmentId     String
+  appointment       Appointment              @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  transactionRef    String                   @unique
+  gateway           PaymentGateway           @default(RAZORPAY)
+  gatewayPaymentId  String?                  @unique
+  gatewaySignature  String?
+  amount            Float
+  currency          String                   @default("INR")
+  status            PaymentTransactionStatus @default(PENDING)
+  failureReason     String?
+  metadata          String?                  // JSON metadata
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+
+  @@index([appointmentId])
+  @@index([transactionRef])
+  @@index([status])
+  @@index([gatewayPaymentId])
+  @@index([createdAt])
+}
+
+// -------------------------------------------------------------
+// 28. CalendarSettingRecord
+// -------------------------------------------------------------
+model CalendarSettingRecord {
+  id        String   @id @default("calendar_settings_default")
+  data      String   // JSON string of CalendarSettings
+  updatedAt DateTime @updatedAt
+}
+
+// -------------------------------------------------------------
+// 29. TimeSlotHoldRecord
+// -------------------------------------------------------------
+model TimeSlotHoldRecord {
+  id            String   @id @default(cuid())
+  holdToken     String   @unique
+  date          DateTime
+  startTime     String
+  endTime       String
+  serviceIds    String[]
+  customerPhone String?
+  expiresAt     DateTime
+  createdAt     DateTime @default(now())
+
+  @@index([holdToken])
+  @@index([date])
+  @@index([expiresAt])
+}
+
+// -------------------------------------------------------------
+// 30. PaymentGatewaySettingRecord
+// -------------------------------------------------------------
+model PaymentGatewaySettingRecord {
+  id        String   @id @default("razorpay_settings")
+  data      String   // Encrypted JSON string of RazorpaySettings
+  updatedAt DateTime @updatedAt
+}
+
+// -------------------------------------------------------------
+// 31. RazorpayOrderRecord
+// -------------------------------------------------------------
+model RazorpayOrderRecord {
+  id            String   @id @default(cuid())
+  orderId       String   @unique
+  appointmentId String
+  amountInPaise Int
+  currency      String   @default("INR")
+  purpose       String   @default("ADVANCE_DEPOSIT")
+  environment   String   @default("TEST")
+  status        String   @default("CREATED")
+  metadata      String?
+  createdAt     DateTime @default(now())
+
+  @@index([appointmentId])
+  @@index([orderId])
+}
+
+// -------------------------------------------------------------
+// 32. PaymentRefundRecord
+// -------------------------------------------------------------
+model PaymentRefundRecord {
+  id               String   @id @default(cuid())
+  transactionId    String
+  appointmentId    String
+  razorpayRefundId String?
+  amount           Float
+  currency         String   @default("INR")
+  reason           String
+  status           String   @default("PROCESSED")
+  initiatedBy      String
+  createdAt        DateTime @default(now())
+
+  @@index([transactionId])
+  @@index([appointmentId])
+  @@index([razorpayRefundId])
+  @@index([createdAt])
+}
+
+// -------------------------------------------------------------
+// 33. WebhookEventRecord
+// -------------------------------------------------------------
+model WebhookEventRecord {
+  id          String   @id @default(cuid())
+  eventId     String   @unique
+  eventType   String
+  environment String   @default("TEST")
+  payload     String
+  isProcessed Boolean  @default(true)
+  error       String?
+  receivedAt  DateTime @default(now())
+
+  @@index([eventId])
+  @@index([eventType])
+}
+
+// -------------------------------------------------------------
+// 34. OfflinePaymentRecord
+// -------------------------------------------------------------
+model OfflinePaymentRecord {
+  id                   String   @id @default(cuid())
+  appointmentId        String
+  amount               Float
+  paymentMethod        String   // CASH, UPI, CARD
+  transactionReference String?
+  receivedDate         String
+  recordedBy           String
+  notes                String?
+  createdAt            DateTime @default(now())
+
+  @@index([appointmentId])
+  @@index([createdAt])
+  @@index([receivedDate])
+}
