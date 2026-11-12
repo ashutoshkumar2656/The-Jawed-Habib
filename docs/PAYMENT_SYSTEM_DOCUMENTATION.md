@@ -1,28 +1,29 @@
 # Payment System & Razorpay Integration Architecture
+# The Jawed Habib Salon – Lalganj
 
-> **Document Status**: Production Verified  
-> **Payment Provider**: Razorpay (Primary Online Payment Gateway)  
-> **Counter Collection**: In-Salon Reception Counter (Cash, UPI QR, Card)  
-> **Security Standard**: Authenticated AES-256-GCM Credential Encryption & Constant-Time Signature Verification  
-> **Developer Attribution**: Designed & Developed by [Axivon Technologies](https://axivontech.in)
+> **Document Version**: 2.0.0 (Production Verified & Idempotent)  
+> **Primary Payment Provider**: Razorpay (REST API v1 & Standard Checkout)  
+> **Counter Collection**: In-Salon Reception Counter (Cash, UPI QR, POS Card)  
+> **Security Standards**: Authenticated AES-256-GCM Credential Encryption, HMAC-SHA256 Signatures, Timing-Safe String Comparison, Webhook Event Deduplication  
+> **Developer Attribution**: Designed & Engineered by [Axivon Technologies](https://axivontech.in)
 
 ---
 
-## 1. Payment Processing Overview
+## 1. Executive Summary & Dual-Channel Financial Model
 
-The payment infrastructure is architected to support the hybrid financial model typical of luxury bridal salons in India:
-1. **Online Advance Booking Deposits**: Customers pay an initial reservation deposit online via Razorpay (UPI, Credit/Debit Cards, Net Banking) to guarantee stylist availability and hold their 30-minute booking slot.
-2. **Salon Counter Balance Settlement**: On the day of service, the client pays the remaining balance at the salon reception desk. The front desk records this offline payment (Cash, Reception UPI, Card POS), which automatically reconciles the account and issues a final tax invoice.
+The payment infrastructure of **The Jawed Habib Salon – Lalganj** is architected for a hybrid bridal salon workflow:
+1. **Online Advance Booking Deposits**: Customers pay an initial reservation deposit online via Razorpay (UPI, Credit/Debit Cards, Net Banking) to guarantee stylist availability and hold their wedding or salon slot.
+2. **Salon Counter Balance Settlement**: On the day of service, the client pays the remaining balance at the salon reception desk. The front desk records this offline payment (Cash, Reception UPI, Card POS), which automatically reconciles the account and issues a digital itemized receipt.
 
 ```mermaid
 flowchart TD
     subgraph Online Advance Booking Flow
-        A["Customer Selects Bridal Package (e.g. ₹5,000 Total)"] --> B["System Computes Advance Deposit (e.g. ₹2,000)"]
-        B --> C["Server Creates Razorpay Order (200000 paise)"]
-        C --> D["Razorpay Standard Checkout Modal Opens"]
+        A["Customer Selects Bridal Package / Service (e.g. ₹5,000 Total)"] --> B["System Computes Permitted Advance Deposit (₹1,000 – ₹2,500)"]
+        B --> C["Server Creates Razorpay Order (200000 paise) via REST API"]
+        C --> D["Razorpay Standard Checkout Modal Opens (Gold Theme #C6A56B)"]
         D --> E["Payment Captured via UPI / Card / Netbanking"]
         E --> F["Client Submits Payment Signature to /api/payments/verify"]
-        F --> G["Server Verifies HMAC-SHA256 Signature with Key Secret"]
+        F --> G["Server Authoritatively Verifies HMAC-SHA256 Signature with Key Secret"]
         G --> H["Appointment Updated: Status=CONFIRMED, Payment=PARTIALLY_PAID, Balance Due=₹3,000"]
     end
 
@@ -38,88 +39,104 @@ flowchart TD
 
 ---
 
-## 2. Technical Implementation Specifications
+## 2. The 6-Phase Payment Lifecycle
 
-### A. Razorpay Client Library ([`src/lib/payments/razorpay.ts`](file:///c:/Users/vk010/Downloads/startup/demo/The%20Jawed%20Habib%20Salon%20-%20Lalganj/src/lib/payments/razorpay.ts))
-Rather than relying on third-party wrapper dependencies that may introduce unvetted code, the system communicates directly with the **Razorpay REST API v1** using Node.js HTTPS clients with strict timeout controls:
-- **Order Creation Endpoint**: `POST https://api.razorpay.com/v1/orders`
-- **Payment Verification**: Native HMAC-SHA256 signature generation via Node.js `crypto`.
-- **Refund Endpoint**: `POST https://api.razorpay.com/v1/payments/{payment_id}/refund`
-- **Timeout Protection**: All outbound gateway requests enforce an `AbortSignal.timeout(8000)` (8-second threshold) to prevent hanging server processes.
+### Phase A: Order Creation (`/api/payments/create-order`)
+When a customer selects a service and chooses an advance payment:
+1. **Server-Side Price Authority**: The server retrieves the actual service or package price directly from the database using `dbRepo.getServiceById` or `dbRepo.getPackageById`. **The client-submitted price is never trusted**.
+2. **Advance Calculation**: The advance deposit is validated between ₹1,000 and ₹2,500 (or capped at total service price if lower) in accordance with salon configuration.
+3. **Paise Conversion**: Converts INR to integer paise to eliminate floating-point rounding errors:
+   $$\text{amountInPaise} = \text{Math.round}(\text{payableINR} \times 100)$$
+4. **Order Creation**: Outbound HTTPS request to Razorpay REST API (`POST https://api.razorpay.com/v1/orders`) with strict 8-second timeout (`AbortSignal.timeout(8000)`).
+5. **Database Storage**: The order is recorded in `RazorpayOrderRecord` with `orderId`, `amountInPaise`, `purpose: "ADVANCE_DEPOSIT"`, and audit metadata.
+6. **Public Checkout Payload**: Returns only safe public checkout parameters (`orderId`, `keyId`, `amount`, `amountInPaise`, `currency`, `appointmentId`, `appointmentNumber`). **Secrets are never returned**.
 
-### B. Advance vs. Balance Financial Logic
-When an appointment is created:
-1. **Total Amount Calculation**: Aggregates base service/package pricing, applies coupon discounts, and computes net payable amount.
-2. **Deposit Computation**:
-   - For services with `minAdvanceAmount` defined (e.g. Bridal Artistry suites), the deposit is set to the minimum advance threshold.
-   - For general appointments, the deposit is set to a fixed deposit or 100% of the service total.
-3. **Paise Conversion**: All financial values sent to Razorpay are multiplied by 100 to convert to Indian Paise (`₹1 = 100 paise`), preventing floating-point rounding errors.
-4. **Remaining Balance Tracking**:
-   $$\text{Remaining Amount} = \text{Total Amount} - \text{Deposit Amount}$$
-   Stored authoritatively in `Appointment.remainingAmount`.
+### Phase B: Payment Checkout (Razorpay Standard Checkout)
+1. **Client Modal**: The client browser loads `https://checkout.razorpay.com/v1/checkout.js`.
+2. **Visual Transparency**: The checkout modal clearly displays:
+   - Unique Booking ID (`JH-LAL-2026-XXXX`).
+   - Selected bridal package or service name.
+   - Total service amount.
+   - Advance amount payable today.
+   - Remaining balance payable at salon.
+   - Luxury brand styling in Champagne Gold (`#C6A56B`).
+   - Customer details pre-filled (Name, Phone, Email).
+
+### Phase C: Payment Verification (`/api/payments/verify`)
+1. **Cryptographic Signature Verification**:
+   The backend authoritatively verifies the payment signature using HMAC-SHA256:
+   $$\text{Expected Signature} = \text{HMAC-SHA256}(\text{order\_id} + "|" + \text{payment\_id}, \text{keySecret})$$
+2. **Constant-Time Comparison**: `timingSafeEqualString` uses `crypto.timingSafeEqual` to eliminate timing attack vectors.
+3. **Amount Reconciliation**: Verifies that the captured amount matches the original order amount.
+4. **Safe Status Update**:
+   - If signature is valid: marks transaction as `SUCCESS`, updates appointment payment status to `PARTIALLY_PAID` (or `PAID`), and promotes appointment status from `PENDING` to `CONFIRMED`.
+   - If signature is invalid: records transaction as `FAILED`, returns HTTP 400 error, and preserves the appointment in `PENDING` state.
+5. **Frontend Callback Safety**: The system never trusts frontend callbacks alone; verification occurs strictly server-side.
+
+### Phase D: Asynchronous Webhook Integration (`/api/webhooks/razorpay`)
+In situations where a user closes their browser immediately after payment capture, Razorpay webhooks guarantee 100% order capture:
+1. **Signature Verification**: Validates the `X-Razorpay-Signature` header using the raw request body text (`req.text()`) and the configured webhook secret.
+2. **Idempotency & Deduplication**:
+   - Every event ID is recorded in `WebhookEventRecord` with a `@unique` constraint in PostgreSQL.
+   - Duplicate webhook deliveries are detected (`eventRecord.isDuplicate === true`) and acknowledged immediately with `HTTP 200 OK` without creating duplicate payments or re-crediting balances.
+3. **Supported Events**:
+   - `payment.captured`: Confirms the appointment and updates `PaymentRecord` to `SUCCESS`.
+   - `payment.failed`: Records failure reason in `PaymentRecord` for administrative auditing.
+   - `order.paid`: Confirms complete order settlement.
+   - `refund.processed`: Records refund reference and reconciles appointment payment balance.
+
+### Phase E: Advance Payment & Remaining Balance Rules
+- **Advance Deposit Range**: Configured between ₹1,000 and ₹2,500.
+- **Service Price Guard**: If the total service price is less than ₹1,000, the advance is capped at the total service price.
+- **Outstanding Balance Protection**: When recording offline payments at the salon counter (`/api/bridal/payments/collect-remaining`), the collected amount is strictly validated to never exceed the outstanding balance:
+  $$\text{Collected Amount} \le \text{Outstanding Balance}$$
+- **Automatic Reconciliation**: When the remaining balance reaches ₹0, the appointment transitions automatically to `paymentStatus: PAID` and `status: CONFIRMED` or `COMPLETED`.
+
+### Phase F: Refund Management (`createRazorpayRefund`)
+- Supports administrative partial or full refunds through Razorpay REST API (`POST https://api.razorpay.com/v1/payments/{payment_id}/refund`).
+- Audit record created in `PaymentRefundRecord` storing `razorpayRefundId`, `amount`, `reason`, and `initiatedBy`.
+- Booking status transitions to `REFUNDED` only after successful gateway verification.
 
 ---
 
-## 3. Cryptographic Signature Verification & Webhook Architecture
+## 3. Credential Encryption & Data Protection
 
-### A. Checkout Payment Verification (`/api/payments/verify`)
-When the Razorpay checkout modal completes on the client browser, it receives three attributes:
-- `razorpay_order_id`
-- `razorpay_payment_id`
-- `razorpay_signature`
-
-The backend authoritatively verifies this payload before marking any booking as confirmed:
-```ts
-const expectedSignature = crypto
-  .createHmac("sha256", decryptedKeySecret)
-  .update(`${orderId}|${paymentId}`)
-  .digest("hex");
-
-const isValid = timingSafeEqualString(expectedSignature, signature);
-```
-- **Constant-Time Comparison**: `timingSafeEqualString` leverages `crypto.timingSafeEqual` to eliminate timing attack vectors.
-- **Idempotency**: If the order has already been marked as `PAID`, subsequent verification requests return the existing confirmed record without creating duplicate payment entries.
-
-### B. Asynchronous Webhooks (`/api/webhooks/razorpay`)
-In situations where a user loses internet connectivity immediately after payment capture, the Razorpay webhook ensures zero dropped bookings:
-- **Signature Verification**: Validates the `X-Razorpay-Signature` header using the decrypted webhook secret.
-- **Event Deduplication**: Every event is checked against `WebhookEventRecord`. Duplicate event deliveries from Razorpay are acknowledged with `200 OK` without re-executing transactions.
-- **Event Handling**:
-  - `payment.captured`: Confirms the appointment and updates `PaymentRecord` to `SUCCESS`.
-  - `payment.failed`: Records payment failure in `PaymentRecord` and logs alert.
-  - `refund.processed`: Updates `PaymentRefundRecord` and reconciles appointment payment status.
-
----
-
-## 4. Credential Security & AES-256-GCM Encryption
-
-Administrative payment gateway credentials are never stored in plaintext in the database or exposed via public APIs:
+Administrative Razorpay credentials (Key Secret and Webhook Secret) are protected with **authenticated AES-256-GCM encryption** before being saved to PostgreSQL:
 
 ```mermaid
 flowchart LR
-    PlainSecret["Admin Enters Razorpay Secret (e.g. rzp_sec_••••)"] --> Encryptor["encryptSecret() (AES-256-GCM)"]
-    Encryptor --> StoredDB["Stored in PaymentGatewaySettingRecord\nFormat: ivHex:authTagHex:encryptedHex"]
-    StoredDB --> Decryptor["decryptSecret() (Server-Side Only)"]
-    Decryptor --> APIOut["Used in Server-to-Server REST Call to Razorpay"]
-    StoredDB --> Masker["maskSecret() / maskKeyId()"]
-    Masker --> AdminUI["Admin UI Displays: rzp_test_••••••••1234"]
+    PlainSecret["Admin Enters Razorpay Secret (rzp_sec_••••)"] --> Cipher["Authenticated AES-256-GCM\n(crypto.createCipheriv)"]
+    MasterKey["Master Key\n(PAYMENT_ENCRYPTION_KEY / JWT_SECRET)"] --> Cipher
+    Cipher --> Encrypted["Encrypted String\n(ivHex:authTagHex:encryptedHex)"]
+    Encrypted --> DB[("PostgreSQL\nPaymentGatewaySettingRecord")]
 ```
 
-1. **Authenticated Encryption Algorithm**: **AES-256-GCM** (Galois/Counter Mode).
-2. **Cryptographic Primitives**:
-   - Random 12-byte (96-bit) Initialization Vector (IV) generated per encryption.
-   - 16-byte (128-bit) authentication tag verifies data integrity.
-   - Encryption key derived from server environment secret `JWT_SECRET` / `PAYMENT_ENCRYPTION_KEY` using `crypto.scryptSync`.
-3. **Public API Shielding**:
-   - Public and administrative GET requests strictly mask credentials (`maskKeyId` and `maskSecret`), outputting safe strings such as `rzp_test_••••••••4821`.
-   - Plaintext secrets are never serialized in JSON responses, frontend bundles, or error logs.
+- **Masked UI Projection**: Admin APIs return masked strings (`••••••••••••`) preventing credential exposure.
+- **Zero Client Exposure**: Razorpay Key Secret and Webhook Secret are **never** delivered to client components or public endpoints.
 
 ---
 
-## 5. Counter Balance Collection (`/api/bridal/payments/collect-remaining`)
+## 4. Setup Guide for Razorpay Credentials
 
-For appointments with an outstanding balance:
-1. Reception desk opens the booking in the **Payments Hub** ([`/admin/payments`](file:///c:/Users/vk010/Downloads/startup/demo/The%20Jawed%20Habib%20Salon%20-%20Lalganj/src/app/admin/payments/page.tsx)).
-2. Desk selects payment method (`CASH`, `UPI`, `CARD`), enters collected amount, and inputs receiving manager's name.
-3. Server records an `OfflinePaymentRecord`, decrements `remainingAmount`, and updates `Appointment.paymentStatus` to `PAID` and `Appointment.status` to `COMPLETED`.
-4. An authoritative digital tax invoice receipt is generated via `/api/payments/receipt/[id]`.
+### Step 1: Obtain Razorpay Test Mode Credentials
+1. Log in to [Razorpay Dashboard](https://dashboard.razorpay.com).
+2. Switch to **Test Mode** using the top header toggle.
+3. Navigate to **Account & Settings** > **API Keys**.
+4. Generate Test Keys:
+   - Note the **Key ID** (`rzp_test_...`).
+   - Note the **Key Secret**.
+
+### Step 2: Configure Webhook Secret
+1. In Razorpay Dashboard, navigate to **Account & Settings** > **Webhooks**.
+2. Click **Add New Webhook**:
+   - **Webhook URL**: `https://yourdomain.com/api/webhooks/razorpay`
+   - **Secret**: Enter a strong secret string (e.g. `openssl rand -hex 16`).
+   - **Alert Email**: Enter your operations email.
+   - **Active Events**: Check `payment.captured`, `payment.failed`, `order.paid`, `refund.processed`.
+3. Save the Webhook.
+
+### Step 3: Configure Application Settings
+Enter these credentials either:
+- In `.env` / environment variables: `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`.
+- Or directly in the Admin Panel at `/admin/settings` (under the **Razorpay Gateway** tab), which encrypts them into PostgreSQL via AES-256-GCM.
+- Click **Test Gateway Connection** to verify live communication with Razorpay.

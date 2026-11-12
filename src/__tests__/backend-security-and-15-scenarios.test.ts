@@ -345,7 +345,8 @@ describe("Backend Architecture, Security & 15 Production Payment Scenarios", () 
       notes: "Remaining balance paid in cash at Lalganj salon counter",
     });
 
-    expect(offlineResult.success).toBe(true);
+    expect(offlineResult.transaction).toBeDefined();
+    expect(offlineResult.offlineRecord.amount).toBe(499);
     const updated = await dbRepo.getAppointmentById(apt.id);
     expect(updated?.remainingAmount).toBe(0);
     expect(updated?.paymentStatus).toBe(PaymentStatus.PAID);
@@ -393,7 +394,8 @@ describe("Backend Architecture, Security & 15 Production Payment Scenarios", () 
       razorpayRefundId: `rfnd_${Date.now()}`,
     });
 
-    expect(refund.success).toBe(true);
+    expect(refund.status).toBe("PROCESSED");
+    expect(refund.amount).toBe(1000);
     const updatedApt = await dbRepo.getAppointmentById(apt.id);
     expect(updatedApt?.paymentStatus).toBe(PaymentStatus.REFUNDED);
   });

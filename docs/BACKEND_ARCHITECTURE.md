@@ -1,32 +1,40 @@
 # Backend Architecture Documentation: The Jawed Habib Salon – Lalganj
 
-> **Document Status**: Production Verified  
+> **Document Version**: 2.0.0 (Production Verified & Performance Optimized)  
 > **Backend Framework**: Next.js 14.2.20 Route Handlers (Node.js Runtime)  
 > **Validation Engine**: Zod 3.23.8 | **Authentication**: JWT + Bcrypt.js + HttpOnly Cookies  
-> **Security Standards**: AES-256-GCM Credential Encryption & Sliding-Window Rate Limiting  
-> **Developer Attribution**: Designed & Developed by [Axivon Technologies](https://axivontech.in)
+> **Security Standards**: Authenticated AES-256-GCM Encryption, HMAC-SHA256 Signatures, Sliding-Window Rate Limiting  
+> **Developer Attribution**: Designed & Engineered by [Axivon Technologies](https://axivontech.in)
 
 ---
 
 ## 1. Backend Architecture Overview
 
-The backend architecture is implemented using **Next.js Route Handlers** (`src/app/api/*`) executing in the Node.js runtime. It provides a robust, decoupled RESTful API serving both the public customer interface and the administrative control center.
+The backend architecture is implemented using **Next.js App Router Route Handlers** (`src/app/api/*`) executing in the Node.js runtime. It provides a robust, decoupled RESTful API serving both the public customer interface and the administrative management hub.
 
 ```mermaid
 flowchart TD
     ClientReq["Incoming HTTP Request"] --> EdgeMW["Edge Middleware (src/middleware.ts)"]
-    EdgeMW -- "Security Headers & Admin Route Check" --> AuthHandler{"Requires Auth?"}
-    AuthHandler -- "Public API" --> RouteHandler["Route Handler (Node.js Runtime)"]
+    EdgeMW -- "Security Headers & Route Inspection" --> AuthHandler{"Requires Auth?"}
+    
+    AuthHandler -- "Public API" --> RateLimitCheck["Sliding-Window Rate Limiter (checkRateLimit)"]
     AuthHandler -- "Admin API" --> RBACCheck["checkAdminAuth() Verification"]
-    RBACCheck -- "Valid Admin JWT" --> RouteHandler
-    RBACCheck -- "Invalid / Missing" --> Err401["401 / 403 JSON Response"]
-    RouteHandler --> ZodValidator{"Zod Schema Validation"}
-    ZodValidator -- "Validation Failure" --> Err400["400 Bad Request (Formatted Field Errors)"]
-    ZodValidator -- "Valid Payload" --> BusinessLogic["Business Logic & Security Controller"]
-    BusinessLogic --> RepoLayer["Data Repository (src/lib/db/repo.ts)"]
-    RepoLayer --> DualPersistence{"canUsePrisma()"}
-    DualPersistence -- "Online" --> PrismaEngine["Prisma Client + PostgreSQL"]
-    DualPersistence -- "Offline / Test" --> InMemEngine["In-Memory State (memoryDb)"]
+    
+    RBACCheck -- "Valid Admin JWT Cookie" --> RateLimitCheck
+    RBACCheck -- "Invalid / Missing Cookie" --> Err401["HTTP 401 / 403 Response"]
+    
+    RateLimitCheck -- "Rate Limit Exceeded" --> Err429["HTTP 429 Too Many Requests"]
+    RateLimitCheck -- "Allowed" --> RouteHandler["Route Handler (Node.js Runtime)"]
+    
+    RouteHandler --> ZodValidator{"Zod Schema Validation (safeParse)"}
+    ZodValidator -- "Validation Failure" --> Err400["HTTP 400 Bad Request (Field Errors)"]
+    ZodValidator -- "Valid Payload" --> BusinessLogic["Business Logic & Service Layer"]
+    
+    BusinessLogic --> RepoLayer["Data Access Layer (dbRepo in src/lib/db/repo.ts)"]
+    RepoLayer --> DualPersistence{"canUsePrisma() Connection Guard"}
+    
+    DualPersistence -- "PostgreSQL Online (Port 5432)" --> PrismaEngine["Prisma Client v5.22.0 (PostgreSQL)"]
+    DualPersistence -- "PostgreSQL Offline / Timeout" --> InMemEngine["High-Fidelity In-Memory Repository (memoryDb)"]
 ```
 
 ---
@@ -35,7 +43,7 @@ flowchart TD
 
 ### A. Token Management
 - **Format**: JSON Web Tokens (JWT) signed via `jsonwebtoken` using HMAC-SHA256 and the server environment secret `JWT_SECRET`.
-- **Payload Contents**:
+- **Payload Schema**:
   ```ts
   interface TokenPayload {
     userId: string;
@@ -63,7 +71,7 @@ Authoritative permissions are verified in `src/lib/auth/rbac.ts`:
   - `ADMIN` (Hierarchy 80): Full appointment, service, customer, and media privileges.
   - `MANAGER` (Hierarchy 60): Appointment and stylist scheduling, customer notes.
   - `STAFF` (Hierarchy 40): View assigned appointments and mark service completion.
-  - `CUSTOMER` (Hierarchy 10): Access personal booking history and loyalty rewards.
+  - `CUSTOMER` (Hierarchy 10): Access personal booking history.
 - **Verification Helper**: Every administrative route handler invokes `checkAdminAuth(req)`, rejecting unauthorized calls with `HTTP 401 Unauthorized` or `HTTP 403 Forbidden`.
 
 ---
@@ -98,43 +106,40 @@ sequenceDiagram
 
 ### Key Validation Schemas:
 1. `loginSchema`: Validates `phoneOrEmail` (min 3 chars), `password` (min 6 chars), and optional `rememberMe` boolean.
-2. `appointmentBookingSchema`: Enforces customer name, 10-digit Indian phone number (`/^[6-9]\d{9}$/`), future appointment date, 30-min slot alignment, and valid service/package IDs.
-3. `adminServiceSchema`: Enforces service name, unique slug, non-negative price, duration (5 to 480 mins), and category foreign key.
-4. `adminRazorpaySettingsSchema`: Enforces valid `keyId` structure (`rzp_test_...` or `rzp_live_...`), encrypted `keySecret`, and webhook secrets.
+2. `appointmentBookingSchema`: Validates customer name, 10-digit Indian phone number (`/^[6-9]\d{9}$/`), service IDs, date, time slot, and advance deposit.
+3. `paymentOrderSchema`: Validates `appointmentId` and `paymentPurpose` without accepting client amounts.
+4. `paymentVerifySchema`: Validates `razorpay_order_id`, `razorpay_payment_id`, and `razorpay_signature`.
+5. `collectRemainingPaymentSchema`: Validates offline balance collection, enforcing that the collected amount does not exceed the outstanding balance.
 
 ---
 
-## 4. Scheduling & Concurrency Engine
+## 4. Performance Optimizations & Caching Strategy
 
-The appointment scheduling engine ([`src/lib/db/repo.ts`](file:///c:/Users/vk010/Downloads/startup/demo/The%20Jawed%20Habib%20Salon%20-%20Lalganj/src/lib/db/repo.ts)) manages time-slot availability, concurrency, and collision prevention:
-
-1. **Operating Hours Rules**:
-   - Fixed salon ground truth: **Monday – Sunday: 10:00 AM – 10:00 PM (All 7 Days)**.
-   - Slot interval: **30 minutes** (e.g., 10:00, 10:30, 11:00 ... 21:30).
-2. **Advance Booking Horizon**:
-   - Maximum booking period: **30 days** in advance. Bookings attempted beyond 30 days are rejected with `CONFLICT_CLOSED`.
-3. **Concurrency & Capacity Control**:
-   - Configurable `maxBookingsPerSlot` (default: 2 simultaneous bridal/salon appointments per slot).
-   - If slot capacity is reached, `/api/appointments/availability` removes the slot from the public calendar, returning an immediate `409 Conflict` if two users attempt concurrent checkout.
-4. **Temporary Slot Holds (`/api/appointments/hold`)**:
-   - When a user enters Step 3 of checkout, a 10-minute hold token is created in `TimeSlotHoldRecord`.
-   - Hold tokens automatically expire after 600 seconds, releasing the slot if payment is not initiated.
-
----
-
-## 5. File Upload & Media Asset Engine
-
-Administrative image uploads are handled via `/api/admin/upload`:
-- **Local Storage**: Files uploaded in development/local environments are saved to the public media directory with unique cryptographic hashes to prevent collisions.
-- **Cloudinary Integration**: When `CLOUDINARY_API_KEY` and `CLOUDINARY_API_SECRET` are configured, assets are uploaded directly to the Cloudinary CDN under the `jawed_habib_lalganj` folder, returning optimized HTTPS delivery URLs.
-- **Media Asset Registry**: All uploaded assets are indexed in the `Media` repository ([`/admin/media`](file:///c:/Users/vk010/Downloads/startup/demo/The%20Jawed%20Habib%20Salon%20-%20Lalganj/src/app/admin/media/page.tsx)) categorized into `bridal`, `interior`, `transformations`, or `general` folders.
+1. **Database Indexing**:
+   Single and composite indexes prevent full table scans on high-traffic queries:
+   - `Appointment(packageId)`
+   - `Appointment(appointmentDate, status)`
+   - `Appointment(customerProfileId, status)`
+   - `Service(categoryId, isActive)`
+   - `PaymentRecord(gatewayPaymentId)` & `PaymentRecord(createdAt)`
+   - `OfflinePaymentRecord(createdAt)` & `OfflinePaymentRecord(receivedDate)`
+   - `CustomerProfile(totalSpent)`
+2. **N+1 Query Elimination**: Multi-entity reads use Prisma relation includes (`customerProfile.user`, `appointmentServices.service`, `payments`, `staff`).
+3. **Safe Caching Headers**:
+   - Public catalogs (`/api/services`, `/api/packages`, `/api/gallery`) leverage edge caching with `Cache-Control: public, s-maxage=300, stale-while-revalidate=600`.
+   - Real-time endpoints (`/api/appointments`, `/api/payments/*`, `/api/admin/*`) declare `export const dynamic = "force-dynamic"` to guarantee real-time data freshness without stale cache poisoning.
+4. **Connection Pooling**: PostgreSQL connection limit set to 10 with timeout guards to prevent pool exhaustion.
 
 ---
 
-## 6. Audit Logging & System Notifications
+## 5. Security & Data Protection Controls
 
-1. **Audit Logs (`AuditLog` / `dbRepo.logAudit`)**:
-   - All critical administrative mutations (status changes, price updates, package publishing, staff reassignments, and payment recordings) are logged with timestamp, user ID, entity type, entity ID, and a JSON diff payload.
-2. **Administrative Notification Queue (`Notification` / `dbRepo.notifyAdmins`)**:
-   - System automatically generates high-priority notifications when an online appointment is placed, an advance payment is captured, or a booking is cancelled.
-   - Notifications surface in real-time in the universal admin topbar badge.
+| Security Dimension | Implementation Mechanism | Protection Result |
+| :--- | :--- | :--- |
+| **Credential Encryption** | Authenticated AES-256-GCM (`src/lib/security/encryption.ts`) | Stored payment gateway keys are encrypted at rest; impossible to read from raw DB dumps |
+| **Signature Verification** | HMAC-SHA256 with constant-time equality (`timingSafeEqualString`) | Prevents fraudulent payment callbacks, payment tampering, and timing attacks |
+| **Webhook Idempotency** | Event deduplication via unique `eventId` in `WebhookEventRecord` | Repeated webhook deliveries return `200 OK` without creating duplicate payments |
+| **Rate Limiting** | In-memory sliding window rate limiter (`src/lib/security/rate-limit.ts`) | Blocks brute-force login attempts and automated booking spam (15 req / 10 min) |
+| **SQL Injection** | Prisma ORM parameterized queries | Raw string concatenation is prohibited; all queries use prepared statements |
+| **XSS Protection** | HTML input sanitization (`sanitizeInput`) & React automatic escaping | Script injection in customer notes and booking forms is sanitized |
+| **Secret Masking** | Display masking (`maskSecret`, `maskKeyId`) | Admin APIs return masked strings (`••••••••••••`); secrets never leak to frontend |
