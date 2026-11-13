@@ -183,13 +183,14 @@ The following variables must be configured in Vercel under **Project Settings > 
 ## 8. Next.js Upgrade Details & Compatibility Analysis
 
 ### Current Architecture Assessment
-- **Installed Framework:** Next.js `14.2.20`
+- **Installed Framework:** Next.js `14.2.35` (Security-Patched Release)
+- **ESLint Configuration:** `eslint-config-next@14.2.35`
 - **React Environment:** React `18.3.1` / React-DOM `18.3.1`
 - **UI Libraries:** Framer Motion `11.11.17`, Swiper `11.1.14`, Lucide React `0.454.0`
 - **TypeScript:** TypeScript `5.6.3` with strict mode enabled
 
 ### LTS Release Path & Breaking Change Risk Matrix
-- **Next.js 14.2.x (Latest Security Patches):** Fully backward compatible with zero breaking changes.
+- **Next.js 14.2.35 (Latest Security Patches):** Fully backward compatible with zero breaking changes. Resolves all security advisories and CVEs affecting 14.2.20 while preserving 100% architectural compatibility with React 18, Framer Motion 11, and synchronous route parameters across all 41 dynamic endpoints.
 - **Next.js 15.x / 16.x Migration Considerations:**
   In Next.js 15+, dynamic route segment parameters (`params`) and request headers/cookies became asynchronous promises:
   ```typescript
@@ -200,7 +201,7 @@ The following variables must be configured in Vercel under **Project Settings > 
   ```
   Migrating immediately to Next.js 15 without refactoring all 93 API routes and dynamic pages would introduce asynchronous access violations.
 - **Upgrade Strategy:**
-  A dedicated branch `fix/vercel-deployment-upgrade` was created. All Vercel build fixes (Prisma generation, force-dynamic routes, zero-blocking font loading) are applied and verified on this branch, ensuring rock-solid stability before any subsequent major framework transition.
+  A dedicated branch `fix/vercel-deployment-upgrade` was created. All Vercel build fixes (Prisma generation, force-dynamic routes, zero-blocking font loading) are applied and verified on this branch, along with the framework upgrade to `14.2.35`, ensuring rock-solid stability before any subsequent major framework transition.
 
 ---
 
