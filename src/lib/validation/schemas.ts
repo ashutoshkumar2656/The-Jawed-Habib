@@ -239,7 +239,18 @@ export const consultationRecommendSchema = z.object({
 // Admin Management Schemas
 // -------------------------------------------------------------
 export const adminAppointmentStatusSchema = z.object({
-  status: z.enum(["PENDING", "PENDING_PAYMENT", "CONFIRMED", "IN_PROGRESS", "COMPLETED", "CANCELLED", "REJECTED", "NO_SHOW", "PAYMENT_FAILED"]),
+  status: z.enum([
+    "PENDING",
+    "PENDING_PAYMENT",
+    "CONFIRMED",
+    "CHECKED_IN",
+    "IN_PROGRESS",
+    "COMPLETED",
+    "CANCELLED",
+    "REJECTED",
+    "NO_SHOW",
+    "PAYMENT_FAILED",
+  ]),
   staffId: z.string().optional().nullable(),
   adminNotes: z.string().max(500).optional().nullable(),
   internalNotes: z.string().max(1000).optional().nullable(),
@@ -398,8 +409,20 @@ export const adminStaffSchema = z.object({
 export const adminTransformationSchema = z.object({
   title: z.string().min(2, "Title required"),
   description: z.string().optional().nullable(),
-  beforeImageUrl: z.string().min(1, "Before image URL required"),
-  afterImageUrl: z.string().min(1, "After image URL required"),
+  beforeImageUrl: z
+    .string()
+    .min(1, "Before image URL required")
+    .refine(
+      (url) => url.startsWith("https://") || url.startsWith("http://") || url.startsWith("/"),
+      { message: "Before image must be a valid HTTPS URL or local path" }
+    ),
+  afterImageUrl: z
+    .string()
+    .min(1, "After image URL required")
+    .refine(
+      (url) => url.startsWith("https://") || url.startsWith("http://") || url.startsWith("/"),
+      { message: "After image must be a valid HTTPS URL or local path" }
+    ),
   serviceId: z.string().optional().nullable(),
   staffId: z.string().optional().nullable(),
   category: z.string().default("Hair").optional(),

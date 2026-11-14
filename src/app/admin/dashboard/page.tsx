@@ -161,6 +161,54 @@ export default async function AdminDashboardPage() {
         })}
       </div>
 
+      {/* Today's Salon Operations Strip */}
+      <div className="rounded-xl border border-salon-borderBlack bg-salon-cardBlack p-5 space-y-3">
+        <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
+          <div className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+            <h3 className="font-serif text-sm font-bold text-white tracking-wide">
+              Today&apos;s Live Salon Operations ({new Date().toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", weekday: "long", day: "numeric", month: "short" })})
+            </h3>
+          </div>
+          <Link href="/admin/bookings?status=TODAY" className="text-xs text-salon-gold hover:underline font-medium">
+            View Today&apos;s Appointments →
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 pt-1">
+          <div className="bg-salon-black p-3 rounded-lg border border-zinc-800/80">
+            <span className="text-[10px] text-zinc-400 uppercase tracking-wider block">Total Scheduled</span>
+            <span className="font-mono text-xl font-bold text-white mt-0.5 block">{analytics.todayAppointments || 0}</span>
+            <span className="text-[10px] text-zinc-500">Full day slots</span>
+          </div>
+          <div className="bg-salon-black p-3 rounded-lg border border-teal-800/40">
+            <span className="text-[10px] text-teal-400 uppercase tracking-wider block">Checked In</span>
+            <span className="font-mono text-xl font-bold text-teal-400 mt-0.5 block">{(analytics as any).todayArrived || 0}</span>
+            <span className="text-[10px] text-zinc-500">In waiting lounge</span>
+          </div>
+          <div className="bg-salon-black p-3 rounded-lg border border-indigo-800/40">
+            <span className="text-[10px] text-indigo-400 uppercase tracking-wider block">In Service</span>
+            <span className="font-mono text-xl font-bold text-indigo-400 mt-0.5 block">{(analytics as any).todayInProgress || 0}</span>
+            <span className="text-[10px] text-zinc-500">Styling in chair</span>
+          </div>
+          <div className="bg-salon-black p-3 rounded-lg border border-emerald-800/40">
+            <span className="text-[10px] text-emerald-400 uppercase tracking-wider block">Completed</span>
+            <span className="font-mono text-xl font-bold text-emerald-400 mt-0.5 block">{(analytics as any).todayCompleted || 0}</span>
+            <span className="text-[10px] text-zinc-500">Service finished</span>
+          </div>
+          <div className="bg-salon-black p-3 rounded-lg border border-blue-800/40">
+            <span className="text-[10px] text-blue-400 uppercase tracking-wider block">Confirmed</span>
+            <span className="font-mono text-xl font-bold text-blue-400 mt-0.5 block">{(analytics as any).todayConfirmed || 0}</span>
+            <span className="text-[10px] text-zinc-500">Expected later</span>
+          </div>
+          <div className="bg-salon-black p-3 rounded-lg border border-rose-800/40">
+            <span className="text-[10px] text-rose-400 uppercase tracking-wider block">No-Show</span>
+            <span className="font-mono text-xl font-bold text-rose-400 mt-0.5 block">{(analytics as any).todayNoShow || 0}</span>
+            <span className="text-[10px] text-zinc-500">Missed appointments</span>
+          </div>
+        </div>
+      </div>
+
       {/* Status Breakdown & Trends Section */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Status Distribution (1 column) */}

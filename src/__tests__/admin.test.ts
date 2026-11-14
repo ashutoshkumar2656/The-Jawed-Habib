@@ -34,7 +34,8 @@ describe("Admin Dashboard & Operations Module", () => {
     });
 
     expect(updated.status).toBe(AppointmentStatus.COMPLETED);
-    expect(updated.paymentStatus).toBe(PaymentStatus.PAID);
+    // Verified decoupled: completing a visit does not wipe unpaid or partially paid balance
+    expect(updated.paymentStatus).toBe(targetApt.paymentStatus);
 
     // 3. Verify CRM profile received visit and spend
     const customerAfter = await dbRepo.getAllCustomers();

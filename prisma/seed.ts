@@ -104,103 +104,10 @@ async function main() {
     },
   });
 
-  // 4. Staff Users
-  const staffPasswordHash = await bcrypt.hash("Stylist@2026!", 10);
-  const staffMembers = [
-    {
-      name: "Vikram Sharma",
-      phone: "9831722983",
-      email: "vikram@jawedhabib-lalganj.in",
-      designation: "Master Hair Stylist & Creative Director",
-      bio: "10+ years mastering Jawed Habib precision geometric cutting and international hair fashion.",
-      experienceYears: 10,
-      specialties: ["Precision Haircut", "Creative Styling", "Fade & Beard Contouring"],
-      rating: 4.9,
-    },
-    {
-      name: "Pooja Singh",
-      phone: "9580000175",
-      email: "pooja@jawedhabib-lalganj.in",
-      designation: "Senior Colorist & Chemical Specialist",
-      bio: "Certified L'Oréal Professionnel colorist specializing in balayage, keratin smoothing and hair botox.",
-      experienceYears: 7,
-      specialties: ["Global Hair Colour", "Balayage", "Keratin Therapy", "Hair Spa"],
-      rating: 4.8,
-    },
-    {
-      name: "Anjali Kumari",
-      phone: "9123456780",
-      email: "anjali@jawedhabib-lalganj.in",
-      designation: "Bridal Makeup Artist & Aesthetician",
-      bio: "Expert bridal makeup specialist with in-depth knowledge of skin rejuvenation therapies and Hydra facials.",
-      experienceYears: 6,
-      specialties: ["Bridal Makeup", "Gold Facial", "Pre-Bridal Packages", "Skin Therapy"],
-      rating: 5.0,
-    },
-  ];
-
-  const createdStaffRecords = [];
-  for (const sm of staffMembers) {
-    const user = await prisma.user.upsert({
-      where: { phone: sm.phone },
-      update: {
-        name: sm.name,
-        roleId: staffRole?.id,
-        roleType: RoleType.STAFF,
-      },
-      create: {
-        name: sm.name,
-        phone: sm.phone,
-        email: sm.email,
-        passwordHash: staffPasswordHash,
-        roleId: staffRole?.id,
-        roleType: RoleType.STAFF,
-      },
-    });
-
-    const staffRecord = await prisma.staff.upsert({
-      where: { userId: user.id },
-      update: {
-        designation: sm.designation,
-        bio: sm.bio,
-        experienceYears: sm.experienceYears,
-        specialties: sm.specialties,
-        rating: sm.rating,
-      },
-      create: {
-        userId: user.id,
-        designation: sm.designation,
-        bio: sm.bio,
-        experienceYears: sm.experienceYears,
-        specialties: sm.specialties,
-        rating: sm.rating,
-        workingDays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
-        startTime: "10:00",
-        endTime: "22:00",
-        isAvailable: true,
-      },
-    });
-
-    // Create availability rules for all 7 days (0 = Sunday to 6 = Saturday)
-    for (let day = 0; day <= 6; day++) {
-      const existingRule = await prisma.availabilityRule.findFirst({
-        where: { staffId: staffRecord.id, dayOfWeek: day },
-      });
-      if (!existingRule) {
-        await prisma.availabilityRule.create({
-          data: {
-            staffId: staffRecord.id,
-            dayOfWeek: day,
-            startTime: "10:00",
-            endTime: "22:00",
-            isWorkingDay: true,
-          },
-        });
-      }
-    }
-
-    createdStaffRecords.push(staffRecord);
-  }
+  // 4. Staff Users:
+  // Genuine salon employees are registered dynamically through the Admin Portal (/admin/staff).
+  // Zero demo or mock staff accounts are seeded.
+  const createdStaffRecords: any[] = [];
 
   // 5. Service Categories
   const categoriesData = [
@@ -606,51 +513,10 @@ async function main() {
     });
   }
 
-  // 10. Sample Customer User for testing
-  const customerPasswordHash = await bcrypt.hash("Customer@123!", 10);
-  const demoCustomer = await prisma.user.upsert({
-    where: { phone: "9876543210" },
-    update: {
-      roleId: customerRole?.id,
-      roleType: RoleType.CUSTOMER,
-    },
-    create: {
-      name: "Rohan Kumar",
-      email: "rohan@example.com",
-      phone: "9876543210",
-      passwordHash: customerPasswordHash,
-      roleId: customerRole?.id,
-      roleType: RoleType.CUSTOMER,
-    },
-  });
-
-  const demoCustomerProfile = await prisma.customerProfile.upsert({
-    where: { userId: demoCustomer.id },
-    update: {},
-    create: {
-      userId: demoCustomer.id,
-      address: "Lalganj Main Market, Vaishali, Bihar",
-      totalVisits: 3,
-      totalSpent: 1250,
-    },
-  });
-
-  // 11. Sample Reviews
-  const existingReview = await prisma.review.findFirst({
-    where: { customerProfileId: demoCustomerProfile.id },
-  });
-  if (!existingReview) {
-    await prisma.review.create({
-      data: {
-        customerProfileId: demoCustomerProfile.id,
-        rating: 5,
-        title: "Best salon in Lalganj without a doubt!",
-        comment: "Outstanding experience at The Jawed Habib Salon Lalganj. The staff is polite, hygiene is 10/10, and the haircut was world class. Highly recommended!",
-        isApproved: true,
-        isFeatured: true,
-      },
-    });
-  }
+  // 10. Customers & Reviews:
+  // Customers register dynamically via public booking and portal authentication.
+  // Reviews are submitted by genuine salon clients and moderated via /admin/reviews.
+  // Zero mock customers or mock reviews are seeded.
 
   // 12. Gallery Images
   const gallerySeedData = [
@@ -707,7 +573,7 @@ async function main() {
         beforeImageUrl: "/images/transformations/keratin-before.webp",
         afterImageUrl: "/images/transformations/keratin-after.webp",
         serviceId: createdServices.find((s) => s.slug === "keratin-protein-treatment")?.id,
-        staffId: createdStaffRecords[1]?.id,
+        staffId: null,
         clientGender: GenderTarget.FEMALE,
         isFeatured: true,
         sortOrder: 1,

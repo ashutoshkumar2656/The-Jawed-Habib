@@ -8,7 +8,9 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   try {
     const transformations = await dbRepo.getTransformations();
-    const published = (transformations as any[]).filter((t) => t.isPublished !== false);
+    const published = (transformations as any[]).filter(
+      (t) => t.isFeatured !== false && t.isPublished !== false
+    );
     return NextResponse.json({
       success: true,
       count: published.length,

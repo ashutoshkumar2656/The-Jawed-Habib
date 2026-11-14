@@ -9,12 +9,17 @@ import { cn } from "@/lib/utils/cn";
 export interface TransformationItem {
   id: string;
   title: string;
-  category: "Men's Haircuts" | "Women's Haircuts" | "Hair Colour" | "Hair Styling" | "Hair Makeovers";
-  beforeImage: string;
-  afterImage: string;
-  stylistRole: string;
-  description: string;
-  treatmentName: string;
+  category?: string;
+  beforeImage?: string;
+  beforeImageUrl?: string;
+  afterImage?: string;
+  afterImageUrl?: string;
+  stylistRole?: string;
+  description?: string | null;
+  treatmentName?: string;
+  service?: { name?: string };
+  staff?: { name?: string; designation?: string };
+  isFeatured?: boolean;
 }
 
 interface BeforeAfterSliderProps {
@@ -36,6 +41,13 @@ export function BeforeAfterSlider({
   const [isDragging, setIsDragging] = React.useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = React.useState<boolean>(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
+
+  const beforeSrc = item.beforeImage || item.beforeImageUrl || "/images/services/service-haircut.jpg";
+  const afterSrc = item.afterImage || item.afterImageUrl || "/images/services/service-haircut.jpg";
+  const categoryLabel = item.category || item.service?.name || "Hair & Beauty";
+  const treatmentLabel = item.treatmentName || item.service?.name || "Signature Styling";
+  const stylistLabel = item.stylistRole || (item.staff ? `${item.staff.name} (${item.staff.designation || "Stylist"})` : "Master Stylist");
+  const badgeLabel = item.isFeatured ? "Master Showcase" : "Salon Transformation";
 
   const handleMove = React.useCallback(
     (clientX: number) => {
@@ -121,10 +133,10 @@ export function BeforeAfterSlider({
       <div className="flex items-center justify-between p-4 border-b border-zinc-800/80 bg-zinc-900/40">
         <div className="flex items-center gap-2">
           <Badge variant="gold" className="text-[10px] tracking-wider uppercase">
-            {item.category}
+            {categoryLabel}
           </Badge>
-          <span className="text-[10px] font-medium tracking-wider uppercase text-amber-400/90 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded-full">
-            Demo Showcase
+          <span className="text-[10px] font-medium tracking-wider uppercase text-salon-gold bg-salon-gold/10 border border-salon-gold/30 px-2 py-0.5 rounded-full">
+            {badgeLabel}
           </span>
         </div>
         <div className="flex items-center space-x-2">
@@ -179,7 +191,7 @@ export function BeforeAfterSlider({
         {/* Under layer: After Image (revealed from right) */}
         <div className="absolute inset-0 w-full h-full">
           <Image
-            src={item.afterImage}
+            src={afterSrc}
             alt={`${item.title} - After`}
             fill
             sizes="(max-width: 768px) 100vw, 800px"
@@ -200,7 +212,7 @@ export function BeforeAfterSlider({
           style={{ clipPath: `polygon(0 0, ${sliderPosition}% 0, ${sliderPosition}% 100%, 0 100%)` }}
         >
           <Image
-            src={item.beforeImage}
+            src={beforeSrc}
             alt={`${item.title} - Before`}
             fill
             sizes="(max-width: 768px) 100vw, 800px"
@@ -241,14 +253,14 @@ export function BeforeAfterSlider({
             {item.title}
           </h3>
           <span className="text-xs text-salon-gold font-medium">
-            {item.treatmentName}
+            {treatmentLabel}
           </span>
         </div>
         <p className="text-xs sm:text-sm text-zinc-400 leading-relaxed">
           {item.description}
         </p>
         <div className="pt-2 text-[11px] text-zinc-500 flex items-center justify-between border-t border-zinc-800/60">
-          <span>Stylist Craft: {item.stylistRole}</span>
+          <span>Stylist Craft: {stylistLabel}</span>
           <span>The Jawed Habib Salon • Lalganj</span>
         </div>
       </div>

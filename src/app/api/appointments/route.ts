@@ -92,8 +92,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 4. Past date restriction
-    const todayStr = new Date().toISOString().split("T")[0];
+    // 4. Past date restriction (enforced relative to Indian Standard Time / Lalganj salon timezone)
+    const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
     if (appointmentDate < todayStr) {
       return NextResponse.json(
         {

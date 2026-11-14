@@ -32,6 +32,7 @@ enum GenderTarget {
 enum AppointmentStatus {
   PENDING
   CONFIRMED
+  CHECKED_IN
   IN_PROGRESS
   COMPLETED
   CANCELLED
@@ -339,6 +340,11 @@ model Appointment {
   appointmentNumber   String               @unique
   customerProfileId   String
   customerProfile     CustomerProfile      @relation(fields: [customerProfileId], references: [id], onDelete: Restrict)
+  customerName        String?
+  customerPhone       String?
+  customerEmail       String?
+  checkedInAt         DateTime?
+  completedAt         DateTime?
   staffId             String?
   staff               Staff?               @relation(fields: [staffId], references: [id], onDelete: SetNull)
   status              AppointmentStatus    @default(PENDING)
@@ -376,6 +382,8 @@ model Appointment {
   refunds             PaymentRefundRecord[]
 
   @@index([customerProfileId])
+  @@index([customerPhone])
+  @@index([customerName])
   @@index([staffId])
   @@index([appointmentDate])
   @@index([status])

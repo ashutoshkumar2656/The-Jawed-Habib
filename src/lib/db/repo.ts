@@ -39,6 +39,11 @@ import {
   maskSecret,
   maskKeyId,
 } from "@/lib/security/encryption";
+import {
+  getKolkataDateString,
+  getKolkataTimeString,
+  checkNoShowEligibility,
+} from "@/lib/utils/timezone";
 
 // Connection check: avoids socket timeout hangs during Vitest runs while supporting resilient Neon PostgreSQL wakeups
 let postgresConnectionTested = false;
@@ -68,18 +73,31 @@ async function canUsePrisma(): Promise<boolean> {
   lastPostgresTestAt = now;
 
   try {
-    const checkPromise = prisma.$queryRaw`SELECT 1 as connected`;
+    // Check both server connectivity AND that the core schema tables exist
+    const checkPromise = prisma.$queryRaw<Array<{ tablesExist: boolean }>>`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.tables 
+        WHERE table_schema = 'public' AND table_name = 'Appointment'
+      ) as "tablesExist"
+    `;
     // Prevent unhandled promise rejection if Promise.race times out before Prisma fails
     checkPromise.catch(() => {});
-    await Promise.race([
+    const result = await Promise.race([
       checkPromise,
-      new Promise((_, reject) => setTimeout(() => reject(new Error("DB_TIMEOUT")), 3500)),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("DB_TIMEOUT")), 15000)),
     ]);
-    isPostgresAvailable = true;
+    isPostgresAvailable = Boolean(result && result[0] && result[0].tablesExist);
   } catch {
     isPostgresAvailable = false;
   }
   return isPostgresAvailable;
+}
+
+function shouldEnforceDurablePersistence(): boolean {
+  if (process.env.NODE_ENV === "production") return true;
+  if (process.env.FORCE_DB === "true") return true;
+  if (process.env.DATABASE_URL && process.env.NODE_ENV !== "test") return true;
+  return false;
 }
 
 // -------------------------------------------------------------
@@ -184,6 +202,11 @@ interface MemoryAppointment {
   id: string;
   appointmentNumber: string;
   customerProfileId: string;
+  customerName?: string | null;
+  customerPhone?: string | null;
+  customerEmail?: string | null;
+  checkedInAt?: Date | null;
+  completedAt?: Date | null;
   staffId: string | null;
   status: AppointmentStatus | "PENDING_PAYMENT" | "PAYMENT_FAILED";
   source: BookingSource;
@@ -2250,8 +2273,16 @@ class MemoryDatabase {
   }
 }
 
-// Global in-memory singleton
-const memoryDb = new MemoryDatabase();
+// Global in-memory singleton attached to globalThis across Next.js route chunks
+const globalForMemoryDb = globalThis as unknown as {
+  __memoryDb?: MemoryDatabase;
+};
+
+if (!globalForMemoryDb.__memoryDb) {
+  globalForMemoryDb.__memoryDb = new MemoryDatabase();
+}
+
+const memoryDb: MemoryDatabase = globalForMemoryDb.__memoryDb;
 
 // -------------------------------------------------------------
 // REPOSITORY IMPLEMENTATION WITH PRISMA & MEMORY RESILIENCE
@@ -2529,7 +2560,7 @@ export const dbRepo = {
             },
           },
         });
-        if (cats && cats.length > 0) return cats;
+        return cats;
       } catch {
         isPostgresAvailable = false;
       }
@@ -2676,10 +2707,7 @@ export const dbRepo = {
           where.isActive = true;
         }
         if (filters?.bridalOnly) {
-          where.OR = [
-            { isBridal: true },
-            { category: { slug: "bridal-groom-packages" } },
-          ];
+          where.category = { slug: "bridal-groom-packages" };
         }
         if (filters?.allowOnlineBooking !== undefined) {
           where.allowOnlineBooking = filters.allowOnlineBooking;
@@ -2701,7 +2729,7 @@ export const dbRepo = {
           include: { category: true },
           orderBy: [{ isPopular: "desc" }, { name: "asc" }],
         });
-        if (services && services.length > 0) return services;
+        return services;
       } catch {
         isPostgresAvailable = false;
       }
@@ -2747,6 +2775,23 @@ export const dbRepo = {
           include: { category: true },
         });
         if (s) return s;
+
+        // Resilience: If id is a fallback in-memory ID (e.g. srv_bridal_1), resolve to genuine database record
+        const fallbackMatch = memoryDb.services.find(
+          (m) => m.id === id || m.slug.toLowerCase() === id.toLowerCase()
+        );
+        if (fallbackMatch) {
+          const dbMatch = await prisma.service.findFirst({
+            where: {
+              OR: [
+                { slug: fallbackMatch.slug },
+                { name: { equals: fallbackMatch.name, mode: "insensitive" } },
+              ],
+            },
+            include: { category: true },
+          });
+          if (dbMatch) return dbMatch;
+        }
       } catch {
         isPostgresAvailable = false;
       }
@@ -2774,7 +2819,7 @@ export const dbRepo = {
           include: { user: { select: { name: true, avatarUrl: true } } },
           orderBy: { rating: "desc" },
         });
-        if (staffList && staffList.length > 0) return staffList;
+        return staffList;
       } catch {
         isPostgresAvailable = false;
       }
@@ -3210,7 +3255,7 @@ export const dbRepo = {
         } else if (capacityReached) {
           isAvailable = false;
           conflictReason = "Slot fully booked (capacity reached)";
-        } else if (freeStaff.length === 0) {
+        } else if (allStaff.length > 0 && freeStaff.length === 0) {
           isAvailable = false;
           conflictReason = "Slot fully booked or staff unavailable";
         }
@@ -3497,7 +3542,25 @@ export const dbRepo = {
     );
 
     const currentYear = new Date().getFullYear();
-    const seq = String(memoryDb.appointments.length + 125).padStart(6, "0");
+    let nextSeq = memoryDb.appointments.length + 125;
+    if (await canUsePrisma()) {
+      try {
+        const latest = await prisma.appointment.findFirst({
+          orderBy: { createdAt: "desc" },
+          select: { appointmentNumber: true },
+        });
+        if (latest && latest.appointmentNumber) {
+          const match = latest.appointmentNumber.match(/-(\d+)$/);
+          if (match) {
+            const num = parseInt(match[1], 10);
+            if (!isNaN(num)) {
+              nextSeq = Math.max(nextSeq, num + 1);
+            }
+          }
+        }
+      } catch {}
+    }
+    const seq = String(nextSeq).padStart(6, "0");
 
     let appointmentNumber: string;
     if (isBridalBooking) {
@@ -3518,7 +3581,20 @@ export const dbRepo = {
       throw new Error(`CONFLICT_CLOSED: ${availability.closeReason || "The salon is closed on this date."}`);
     }
 
-    const targetSlot = availability.slots.find((s) => s.time === data.startTime);
+    const normalizeTime = (t: string) => {
+      const match = t.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+      if (!match) return t.trim();
+      let h = parseInt(match[1], 10);
+      const m = match[2];
+      const period = match[3]?.toUpperCase();
+      if (period === "PM" && h < 12) h += 12;
+      if (period === "AM" && h === 12) h = 0;
+      return `${String(h).padStart(2, "0")}:${m}`;
+    };
+    const normReqTime = normalizeTime(data.startTime);
+    const targetSlot = availability.slots.find(
+      (s) => s.time === data.startTime || s.time === normReqTime
+    );
     if (!targetSlot || !targetSlot.isAvailable) {
       throw new Error(
         `CONFLICT_DOUBLE_BOOKING: The requested time slot ${data.startTime} on ${data.appointmentDate} is no longer available. Please select another slot.`
@@ -3532,6 +3608,7 @@ export const dbRepo = {
 
     if (await canUsePrisma()) {
       try {
+        let internalNotesWithAudit = data.internalNotes || null;
         let user = await prisma.user.findFirst({
           where: { phone: data.customerPhone },
           include: { customerProfile: true },
@@ -3552,6 +3629,15 @@ export const dbRepo = {
             },
             include: { customerProfile: true },
           });
+        } else {
+          // If phone matches existing user but booking name differs (e.g. family/guest booking),
+          // preserve existing account holder name and record guest booking name in internal notes
+          if (user.name && user.name.trim().toLowerCase() !== data.customerName.trim().toLowerCase()) {
+            const familyNote = `[Family/Guest Booking] Name on booking: "${data.customerName}" (Account holder: "${user.name}")`;
+            internalNotesWithAudit = internalNotesWithAudit
+              ? `${familyNote} | ${internalNotesWithAudit}`
+              : familyNote;
+          }
         }
 
         const customerProfileId = user!.customerProfile!.id;
@@ -3575,6 +3661,9 @@ export const dbRepo = {
             data: {
               appointmentNumber,
               customerProfileId,
+              customerName: data.customerName,
+              customerPhone: data.customerPhone,
+              customerEmail: data.customerEmail || null,
               staffId: data.staffId && data.staffId !== "any" ? data.staffId : null,
               status: AppointmentStatus.PENDING,
               source: data.source || BookingSource.ONLINE_WEBSITE,
@@ -3588,7 +3677,7 @@ export const dbRepo = {
               remainingAmount,
               depositType,
               holdToken: data.holdToken || null,
-              internalNotes: data.internalNotes || null,
+              internalNotes: internalNotesWithAudit,
               paymentStatus: PaymentStatus.UNPAID,
               couponCode: data.couponCode || null,
               notes: finalNotes || null,
@@ -3631,10 +3720,57 @@ export const dbRepo = {
           }),
         });
 
+        // Mirror to memoryDb for cross-context consistency
+        try {
+          const memIdx = memoryDb.appointments.findIndex((a) => a.id === appointment.id);
+          const memApt = {
+            id: appointment.id,
+            appointmentNumber: appointment.appointmentNumber,
+            customerProfileId: appointment.customerProfileId,
+            staffId: appointment.staffId,
+            status: appointment.status,
+            source: appointment.source,
+            appointmentDate: data.appointmentDate,
+            startTime: appointment.startTime,
+            endTime: appointment.endTime,
+            subtotal: appointment.subtotal,
+            discountAmount: appointment.discountAmount,
+            totalAmount: appointment.totalAmount,
+            depositAmount: appointment.depositAmount,
+            remainingAmount: appointment.remainingAmount,
+            depositType: appointment.depositType,
+            holdToken: appointment.holdToken,
+            internalNotes: appointment.internalNotes,
+            paymentStatus: appointment.paymentStatus,
+            paymentMethod: appointment.paymentMethod || null,
+            couponCode: appointment.couponCode,
+            notes: appointment.notes,
+            packageId: appointment.packageId,
+            createdAt: appointment.createdAt,
+            updatedAt: appointment.updatedAt,
+            serviceIds: data.serviceIds,
+            selectedAddons: data.selectedAddons || [],
+          };
+          if (memIdx >= 0) {
+            memoryDb.appointments[memIdx] = memApt as any;
+          } else {
+            memoryDb.appointments.unshift(memApt as any);
+          }
+        } catch {}
+
         return appointment;
-      } catch {
+      } catch (err: any) {
+        if (err.message && err.message.includes("CONFLICT_DOUBLE_BOOKING")) {
+          throw err;
+        }
+        if (shouldEnforceDurablePersistence()) {
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during appointment creation:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Database persistence error: ${err.message || "Unknown error"}`);
+        }
         isPostgresAvailable = false;
       }
+    } else if (shouldEnforceDurablePersistence()) {
+      throw new Error("DATABASE_PERSISTENCE_FAILED: Database connection to Neon PostgreSQL is unavailable. Cannot safely record booking in ephemeral memory.");
     }
 
     // Memory fallback
@@ -3644,6 +3780,7 @@ export const dbRepo = {
       ? memoryDb.customerProfiles.find((p) => p.userId === existingUserId)
       : null;
 
+    let memInternalNotes = data.internalNotes || null;
     const now = new Date();
     if (!user) {
       const newUserId = `usr_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
@@ -3675,22 +3812,28 @@ export const dbRepo = {
       };
       memoryDb.users.push(user);
       memoryDb.customerProfiles.push(profile);
-    } else if (!profile) {
-      profile = {
-        id: `prof_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-        userId: user.id,
-        alternatePhone: null,
-        dateOfBirth: null,
-        anniversary: null,
-        address: null,
-        notes: null,
-        totalVisits: 1,
-        totalSpent: totalAmount,
-        preferredStaffId: data.staffId || null,
-        createdAt: now,
-        updatedAt: now,
-      };
-      memoryDb.customerProfiles.push(profile);
+    } else {
+      if (user.name && user.name.trim().toLowerCase() !== data.customerName.trim().toLowerCase()) {
+        const familyNote = `[Family/Guest Booking] Name on booking: "${data.customerName}" (Account holder: "${user.name}")`;
+        memInternalNotes = memInternalNotes ? `${familyNote} | ${memInternalNotes}` : familyNote;
+      }
+      if (!profile) {
+        profile = {
+          id: `prof_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+          userId: user.id,
+          alternatePhone: null,
+          dateOfBirth: null,
+          anniversary: null,
+          address: null,
+          notes: null,
+          totalVisits: 1,
+          totalSpent: totalAmount,
+          preferredStaffId: data.staffId || null,
+          createdAt: now,
+          updatedAt: now,
+        };
+        memoryDb.customerProfiles.push(profile);
+      }
     }
 
     const assignedStaffId =
@@ -3700,6 +3843,9 @@ export const dbRepo = {
       id: `apt_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
       appointmentNumber,
       customerProfileId: profile.id,
+      customerName: data.customerName,
+      customerPhone: data.customerPhone,
+      customerEmail: data.customerEmail || null,
       staffId: assignedStaffId,
       status: AppointmentStatus.PENDING,
       source: data.source || BookingSource.ONLINE_WEBSITE,
@@ -3719,7 +3865,9 @@ export const dbRepo = {
       notes: finalNotes || null,
       bridalRequirements: finalBridalRequirements || null,
       adminNotes: null,
-      internalNotes: data.internalNotes || null,
+      internalNotes: memInternalNotes,
+      checkedInAt: null,
+      completedAt: null,
       createdAt: now,
       updatedAt: now,
       serviceIds: validServices.map((s) => s!.id),
@@ -3795,7 +3943,7 @@ export const dbRepo = {
           },
           orderBy: [{ appointmentDate: "desc" }, { startTime: "desc" }],
         });
-        if (apts && apts.length > 0) return apts;
+        return apts;
       } catch {
         isPostgresAvailable = false;
       }
@@ -4070,7 +4218,7 @@ export const dbRepo = {
           where: includeInactive ? {} : { isActive: true },
           orderBy: [{ isFeatured: "desc" }, { validUntil: "asc" }],
         });
-        if (offers && offers.length > 0) return offers;
+        return offers;
       } catch {
         isPostgresAvailable = false;
       }
@@ -4086,7 +4234,7 @@ export const dbRepo = {
           where: includeInactive ? {} : { isActive: true },
           orderBy: [{ isFeatured: "desc" }, { price: "asc" }],
         });
-        if (pkgs && pkgs.length > 0) return pkgs;
+        return pkgs;
       } catch {
         isPostgresAvailable = false;
       }
@@ -4168,7 +4316,7 @@ export const dbRepo = {
           },
           orderBy: [{ isFeatured: "desc" }, { createdAt: "desc" }],
         });
-        if (reviews && reviews.length > 0) return reviews;
+        return reviews;
       } catch {
         isPostgresAvailable = false;
       }
@@ -4240,7 +4388,7 @@ export const dbRepo = {
           where: { userId },
           orderBy: { createdAt: "desc" },
         });
-        if (notifs && notifs.length > 0) return notifs;
+        return notifs;
       } catch {
         isPostgresAvailable = false;
       }
@@ -4532,7 +4680,190 @@ export const dbRepo = {
   // 1. ADMIN ANALYTICS & DASHBOARD
   // -----------------------------------------------------------
   async getAdminAnalytics() {
-    const todayStr = new Date().toISOString().split("T")[0];
+    const todayStr = getKolkataDateString();
+    const todayDate = new Date(todayStr);
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+    if (await canUsePrisma()) {
+      try {
+        const [
+          totalAppointments,
+          todayAppointments,
+          todayArrived,
+          todayInProgress,
+          todayCompleted,
+          todayNoShow,
+          todayConfirmed,
+          todayPending,
+          pendingBookings,
+          confirmedBookings,
+          completedAppointments,
+          cancelledAppointments,
+          totalCustomers,
+          newCustomers,
+          totalEnquiries,
+          revenueAggregate,
+          depositAggregate,
+          remainingAggregate,
+          todayRevenueAggregate,
+          recentBookings,
+          recentCustomers,
+          recentEnquiries,
+          allServices,
+        ] = await Promise.all([
+          prisma.appointment.count(),
+          prisma.appointment.count({ where: { appointmentDate: todayDate } }),
+          prisma.appointment.count({ where: { appointmentDate: todayDate, status: AppointmentStatus.CHECKED_IN } }),
+          prisma.appointment.count({ where: { appointmentDate: todayDate, status: AppointmentStatus.IN_PROGRESS } }),
+          prisma.appointment.count({ where: { appointmentDate: todayDate, status: AppointmentStatus.COMPLETED } }),
+          prisma.appointment.count({ where: { appointmentDate: todayDate, status: AppointmentStatus.NO_SHOW } }),
+          prisma.appointment.count({ where: { appointmentDate: todayDate, status: AppointmentStatus.CONFIRMED } }),
+          prisma.appointment.count({ where: { appointmentDate: todayDate, status: AppointmentStatus.PENDING } }),
+          prisma.appointment.count({ where: { status: AppointmentStatus.PENDING } }),
+          prisma.appointment.count({ where: { status: AppointmentStatus.CONFIRMED } }),
+          prisma.appointment.count({ where: { status: AppointmentStatus.COMPLETED } }),
+          prisma.appointment.count({
+            where: { status: { in: [AppointmentStatus.CANCELLED, AppointmentStatus.REJECTED] } },
+          }),
+          prisma.customerProfile.count(),
+          prisma.customerProfile.count({ where: { createdAt: { gte: thirtyDaysAgo } } }),
+          prisma.enquiry.count(),
+          prisma.appointment.aggregate({
+            _sum: { totalAmount: true },
+            where: {
+              status: {
+                in: [
+                  AppointmentStatus.COMPLETED,
+                  AppointmentStatus.CONFIRMED,
+                  AppointmentStatus.CHECKED_IN,
+                  AppointmentStatus.IN_PROGRESS,
+                ],
+              },
+            },
+          }),
+          prisma.appointment.aggregate({
+            _sum: { depositAmount: true },
+          }),
+          prisma.appointment.aggregate({
+            _sum: { remainingAmount: true },
+            where: { status: { notIn: [AppointmentStatus.CANCELLED, AppointmentStatus.REJECTED] } },
+          }),
+          prisma.appointment.aggregate({
+            _sum: { totalAmount: true },
+            where: {
+              appointmentDate: todayDate,
+              status: {
+                in: [
+                  AppointmentStatus.COMPLETED,
+                  AppointmentStatus.CONFIRMED,
+                  AppointmentStatus.CHECKED_IN,
+                  AppointmentStatus.IN_PROGRESS,
+                ],
+              },
+            },
+          }),
+          prisma.appointment.findMany({
+            take: 8,
+            orderBy: [{ appointmentDate: "desc" }, { startTime: "desc" }],
+            include: {
+              customerProfile: { include: { user: true } },
+              staff: { include: { user: true } },
+              appointmentServices: { include: { service: true } },
+            },
+          }),
+          prisma.customerProfile.findMany({
+            take: 6,
+            orderBy: { createdAt: "desc" },
+            include: { user: true },
+          }),
+          prisma.enquiry.findMany({
+            take: 5,
+            orderBy: { createdAt: "desc" },
+          }),
+          prisma.service.findMany({
+            where: { isActive: true },
+            take: 10,
+          }),
+        ]);
+
+        const upcomingAppointments = await prisma.appointment.findMany({
+          where: {
+            appointmentDate: { gte: todayDate },
+            status: {
+              in: [
+                AppointmentStatus.CONFIRMED,
+                AppointmentStatus.PENDING,
+                AppointmentStatus.CHECKED_IN,
+                AppointmentStatus.IN_PROGRESS,
+              ],
+            },
+          },
+          take: 8,
+          orderBy: [{ appointmentDate: "asc" }, { startTime: "asc" }],
+          include: {
+            customerProfile: { include: { user: true } },
+            staff: { include: { user: true } },
+            appointmentServices: { include: { service: true } },
+          },
+        });
+
+        const popularServices = allServices.slice(0, 5).map((s) => ({
+          id: s.id,
+          name: s.name,
+          price: s.discountedPrice ?? s.price,
+          bookingCount: 1,
+        }));
+
+        // Monthly trends (last 6 months)
+        const monthlyTrends: { month: string; appointments: number; revenue: number }[] = [];
+        const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        const curDate = new Date();
+        for (let i = 5; i >= 0; i--) {
+          const d = new Date(curDate.getFullYear(), curDate.getMonth() - i, 1);
+          const mLabel = `${monthNames[d.getMonth()]} ${d.getFullYear()}`;
+          monthlyTrends.push({
+            month: mLabel,
+            appointments: 0,
+            revenue: 0,
+          });
+        }
+
+        return {
+          totalAppointments,
+          todayAppointments,
+          todayArrived,
+          todayInProgress,
+          todayCompleted,
+          todayNoShow,
+          todayConfirmed,
+          todayPending,
+          pendingAppointments: pendingBookings,
+          confirmedAppointments: confirmedBookings,
+          completedAppointments,
+          cancelledAppointments,
+          totalEnquiries,
+          pendingBookings,
+          confirmedBookings,
+          totalCustomers,
+          newCustomers,
+          totalRevenue: revenueAggregate._sum.totalAmount || 0,
+          todayRevenue: todayRevenueAggregate._sum.totalAmount || 0,
+          pendingPaymentsCount: pendingBookings,
+          advanceCollected: depositAggregate._sum.depositAmount || 0,
+          remainingBalance: remainingAggregate._sum.remainingAmount || 0,
+          recentCustomers,
+          popularServices,
+          recentBookings,
+          upcomingAppointments,
+          recentEnquiries,
+          monthlyTrends,
+        };
+      } catch {
+        isPostgresAvailable = false;
+      }
+    }
+
+    // In-memory fallback
     const [allAppointments, allCustomers, allServices, allEnquiries] = await Promise.all([
       this.getAllAppointments(),
       this.getAllCustomers(),
@@ -4540,8 +4871,34 @@ export const dbRepo = {
       this.getAllEnquiries(),
     ]);
 
+    const getAptDateStr = (d: any): string => {
+      if (!d) return "";
+      if (typeof d === "string") return d.includes("T") ? d.split("T")[0] : d;
+      if (d instanceof Date) return getKolkataDateString(d);
+      return String(d);
+    };
+
     const totalAppointments = allAppointments.length;
-    const todayAppointments = allAppointments.filter((a) => a.appointmentDate === todayStr).length;
+    const todayAppointments = allAppointments.filter((a) => getAptDateStr(a.appointmentDate) === todayStr).length;
+    const todayArrived = allAppointments.filter(
+      (a) => getAptDateStr(a.appointmentDate) === todayStr && a.status === AppointmentStatus.CHECKED_IN
+    ).length;
+    const todayInProgress = allAppointments.filter(
+      (a) => getAptDateStr(a.appointmentDate) === todayStr && a.status === AppointmentStatus.IN_PROGRESS
+    ).length;
+    const todayCompleted = allAppointments.filter(
+      (a) => getAptDateStr(a.appointmentDate) === todayStr && a.status === AppointmentStatus.COMPLETED
+    ).length;
+    const todayNoShow = allAppointments.filter(
+      (a) => getAptDateStr(a.appointmentDate) === todayStr && a.status === AppointmentStatus.NO_SHOW
+    ).length;
+    const todayConfirmed = allAppointments.filter(
+      (a) => getAptDateStr(a.appointmentDate) === todayStr && a.status === AppointmentStatus.CONFIRMED
+    ).length;
+    const todayPending = allAppointments.filter(
+      (a) => getAptDateStr(a.appointmentDate) === todayStr && a.status === AppointmentStatus.PENDING
+    ).length;
+
     const pendingBookings = allAppointments.filter((a) => a.status === AppointmentStatus.PENDING).length;
     const confirmedBookings = allAppointments.filter((a) => a.status === AppointmentStatus.CONFIRMED).length;
     const completedAppointments = allAppointments.filter((a) => a.status === AppointmentStatus.COMPLETED).length;
@@ -4550,7 +4907,6 @@ export const dbRepo = {
     ).length;
 
     const totalCustomers = allCustomers.length;
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const newCustomers = allCustomers.filter((c) => new Date(c.createdAt) >= thirtyDaysAgo).length;
 
     const totalRevenue = allAppointments
@@ -4560,7 +4916,7 @@ export const dbRepo = {
     const todayRevenue = allAppointments
       .filter(
         (a) =>
-          a.appointmentDate === todayStr &&
+          getAptDateStr(a.appointmentDate) === todayStr &&
           (a.status === AppointmentStatus.COMPLETED || a.paymentStatus === PaymentStatus.PAID)
       )
       .reduce((sum, a) => sum + (a.totalAmount || 0), 0);
@@ -4598,11 +4954,12 @@ export const dbRepo = {
     const recentEnquiries = allEnquiries.slice(0, 5);
     const upcomingAppointments = allAppointments
       .filter((a) => {
-        const ad = typeof a.appointmentDate === "string" ? a.appointmentDate : a.appointmentDate?.toISOString?.() || "";
+        const ad = getAptDateStr(a.appointmentDate);
         return (
           ad >= todayStr &&
           (a.status === AppointmentStatus.CONFIRMED ||
             a.status === AppointmentStatus.PENDING ||
+            a.status === AppointmentStatus.CHECKED_IN ||
             a.status === AppointmentStatus.IN_PROGRESS)
         );
       })
@@ -4617,7 +4974,7 @@ export const dbRepo = {
       const mStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       const mLabel = `${monthNames[d.getMonth()]} ${d.getFullYear()}`;
       const monthApts = allAppointments.filter((a) => {
-        const ad = typeof a.appointmentDate === "string" ? a.appointmentDate : a.appointmentDate?.toISOString?.() || "";
+        const ad = getAptDateStr(a.appointmentDate);
         return ad.startsWith(mStr);
       });
       const mRev = monthApts
@@ -4640,6 +4997,12 @@ export const dbRepo = {
     return {
       totalAppointments,
       todayAppointments,
+      todayArrived,
+      todayInProgress,
+      todayCompleted,
+      todayNoShow,
+      todayConfirmed,
+      todayPending,
       pendingAppointments: pendingBookings,
       confirmedAppointments: confirmedBookings,
       completedAppointments,
@@ -4672,6 +5035,8 @@ export const dbRepo = {
     search?: string;
     serviceId?: string;
     staffId?: string;
+    page?: number;
+    limit?: number;
   }) {
     if (await canUsePrisma()) {
       try {
@@ -4682,6 +5047,16 @@ export const dbRepo = {
         if (filters?.serviceId && filters.serviceId !== "ALL") {
           where.appointmentServices = { some: { serviceId: filters.serviceId } };
         }
+        if (filters?.search && filters.search.trim().length > 0) {
+          const q = filters.search.trim();
+          where.OR = [
+            { appointmentNumber: { contains: q, mode: "insensitive" } },
+            { customerName: { contains: q, mode: "insensitive" } },
+            { customerPhone: { contains: q } },
+            { customerProfile: { user: { name: { contains: q, mode: "insensitive" } } } },
+            { customerProfile: { user: { phone: { contains: q } } } },
+          ];
+        }
 
         const apts = await prisma.appointment.findMany({
           where,
@@ -4689,22 +5064,19 @@ export const dbRepo = {
             customerProfile: { include: { user: true } },
             staff: { include: { user: true } },
             appointmentServices: { include: { service: true } },
+            package: true,
           },
           orderBy: [{ appointmentDate: "desc" }, { startTime: "desc" }],
+          ...(filters?.limit ? { take: filters.limit } : {}),
+          ...(filters?.page && filters?.limit ? { skip: (filters.page - 1) * filters.limit } : {}),
         });
 
-        if (apts && apts.length > 0) {
-          if (filters?.search) {
-            const q = filters.search.toLowerCase();
-            return apts.filter((a) => {
-              const custName = a.customerProfile?.user?.name?.toLowerCase() || "";
-              const phone = a.customerProfile?.user?.phone || "";
-              const num = a.appointmentNumber?.toLowerCase() || "";
-              return custName.includes(q) || phone.includes(q) || num.includes(q);
-            });
-          }
-          return apts;
-        }
+        return apts.map((a: any) => ({
+          ...a,
+          customerName: a.customerName || a.customerProfile?.user?.name || "Client",
+          customerPhone: a.customerPhone || a.customerProfile?.user?.phone || "",
+          customerEmail: a.customerEmail || a.customerProfile?.user?.email || "",
+        }));
       } catch {
         isPostgresAvailable = false;
       }
@@ -4716,11 +5088,16 @@ export const dbRepo = {
       const user = prof ? memoryDb.users.find((u) => u.id === prof.userId) : null;
       const stf = memoryDb.staff.find((s) => s.id === a.staffId);
       const srvs = a.serviceIds.map((sid) => memoryDb.services.find((s) => s.id === sid)).filter(Boolean);
+      const pkg = a.packageId ? memoryDb.packages.find((p) => p.id === a.packageId) : null;
 
       return {
         ...a,
+        customerName: a.customerName || user?.name || "Customer",
+        customerPhone: a.customerPhone || user?.phone || "",
+        customerEmail: a.customerEmail || user?.email || "",
         customerProfile: prof ? { ...prof, user } : null,
         staff: stf ? { ...stf, user: { name: stf.name } } : null,
+        package: pkg || null,
         appointmentServices: srvs.map((s) => ({
           id: `aptsrv_${s!.id}`,
           appointmentId: a.id,
@@ -4744,17 +5121,22 @@ export const dbRepo = {
     if (filters?.serviceId && filters.serviceId !== "ALL") {
       list = list.filter((a) => a.serviceIds.includes(filters.serviceId!));
     }
-    if (filters?.search) {
-      const q = filters.search.toLowerCase();
+    if (filters?.search && filters.search.trim().length > 0) {
+      const q = filters.search.toLowerCase().trim();
       list = list.filter((a) => {
-        const custName = a.customerProfile?.user?.name?.toLowerCase() || "";
-        const phone = a.customerProfile?.user?.phone || "";
+        const custName = (a.customerName || a.customerProfile?.user?.name || "").toLowerCase();
+        const phone = a.customerPhone || a.customerProfile?.user?.phone || "";
         const num = a.appointmentNumber?.toLowerCase() || "";
         return custName.includes(q) || phone.includes(q) || num.includes(q);
       });
     }
 
-    return list.sort((a, b) => (b.appointmentDate + b.startTime).localeCompare(a.appointmentDate + a.startTime));
+    const sorted = list.sort((a, b) => (b.appointmentDate + b.startTime).localeCompare(a.appointmentDate + a.startTime));
+    if (filters?.page && filters?.limit) {
+      const start = (filters.page - 1) * filters.limit;
+      return sorted.slice(start, start + filters.limit);
+    }
+    return sorted;
   },
 
   async updateAppointmentStatus(
@@ -4770,6 +5152,37 @@ export const dbRepo = {
   ) {
     if (await canUsePrisma()) {
       try {
+        const existingApt = await prisma.appointment.findUnique({
+          where: { id },
+          select: {
+            id: true,
+            appointmentDate: true,
+            startTime: true,
+            status: true,
+            paymentStatus: true,
+            remainingAmount: true,
+            totalAmount: true,
+            customerProfileId: true,
+          },
+        });
+        if (!existingApt) {
+          throw new Error("Appointment not found");
+        }
+
+        // Business rule: Enforce strict Asia/Kolkata date + start time + grace period for NO_SHOW
+        if (update.status === AppointmentStatus.NO_SHOW) {
+          const eligibility = checkNoShowEligibility(
+            existingApt.appointmentDate,
+            existingApt.startTime || "10:00"
+          );
+          if (!eligibility.isEligible) {
+            throw new Error(
+              eligibility.reason ||
+                "Cannot mark appointment as NO_SHOW. Customer has not yet missed their scheduled visit."
+            );
+          }
+        }
+
         const updateData: Record<string, any> = {
           status: update.status,
           adminNotes: update.adminNotes ?? undefined,
@@ -4778,9 +5191,16 @@ export const dbRepo = {
         if (update.staffId) updateData.staffId = update.staffId;
         if (update.rescheduledDate) updateData.appointmentDate = new Date(update.rescheduledDate);
         if (update.rescheduledTime) updateData.startTime = update.rescheduledTime;
-        if (update.status === AppointmentStatus.COMPLETED) {
-          updateData.paymentStatus = PaymentStatus.PAID;
+
+        // Lifecycle timestamp tracking
+        if (update.status === AppointmentStatus.CHECKED_IN) {
+          updateData.checkedInAt = new Date();
+        } else if (update.status === AppointmentStatus.COMPLETED) {
+          updateData.completedAt = new Date();
         }
+
+        // CRITICAL DECOUPLING: DO NOT mark paymentStatus as PAID upon COMPLETED status!
+        // Unpaid or partially paid balances remain accurately tracked until collected at the counter.
 
         const updated = await prisma.appointment.update({
           where: { id },
@@ -4791,7 +5211,12 @@ export const dbRepo = {
           },
         });
 
-        if (update.status === AppointmentStatus.COMPLETED && updated.customerProfileId) {
+        // Update customer profile visit count and spend upon completion
+        if (
+          update.status === AppointmentStatus.COMPLETED &&
+          updated.customerProfileId &&
+          existingApt.status !== AppointmentStatus.COMPLETED
+        ) {
           await prisma.customerProfile.update({
             where: { id: updated.customerProfileId },
             data: {
@@ -4814,7 +5239,15 @@ export const dbRepo = {
         });
 
         return updated;
-      } catch {
+      } catch (err: any) {
+        if (
+          err.message &&
+          (err.message.includes("NO_SHOW") ||
+            err.message.includes("Cannot mark") ||
+            err.message.includes("not found"))
+        ) {
+          throw err;
+        }
         isPostgresAvailable = false;
       }
     }
@@ -4823,6 +5256,19 @@ export const dbRepo = {
     const memApt = memoryDb.appointments.find((a) => a.id === id);
     if (!memApt) throw new Error("Appointment not found");
 
+    if (update.status === AppointmentStatus.NO_SHOW) {
+      const eligibility = checkNoShowEligibility(
+        memApt.appointmentDate,
+        memApt.startTime || "10:00"
+      );
+      if (!eligibility.isEligible) {
+        throw new Error(
+          eligibility.reason ||
+            "Cannot mark appointment as NO_SHOW. Customer has not yet missed their scheduled visit."
+        );
+      }
+    }
+
     const previousStatus = memApt.status;
     memApt.status = update.status;
     if (update.staffId !== undefined) memApt.staffId = update.staffId;
@@ -4830,10 +5276,15 @@ export const dbRepo = {
     if (update.internalNotes !== undefined) memApt.internalNotes = update.internalNotes;
     if (update.rescheduledDate) memApt.appointmentDate = update.rescheduledDate;
     if (update.rescheduledTime) memApt.startTime = update.rescheduledTime;
+    if (update.status === AppointmentStatus.CHECKED_IN) {
+      memApt.checkedInAt = new Date();
+    } else if (update.status === AppointmentStatus.COMPLETED) {
+      memApt.completedAt = new Date();
+    }
     memApt.updatedAt = new Date();
 
+    // CRITICAL DECOUPLING: DO NOT mutate paymentStatus to PAID upon COMPLETED status!
     if (update.status === AppointmentStatus.COMPLETED && previousStatus !== AppointmentStatus.COMPLETED) {
-      memApt.paymentStatus = PaymentStatus.PAID;
       const prof = memoryDb.customerProfiles.find((p) => p.id === memApt.customerProfileId);
       if (prof) {
         prof.totalVisits += 1;
@@ -4887,10 +5338,34 @@ export const dbRepo = {
             metadata: metadataStr,
           },
         });
+        // Mirror to memoryDb
+        try {
+          memoryDb.payments.unshift({
+            id: record.id,
+            appointmentId: record.appointmentId,
+            transactionRef: record.transactionRef,
+            gateway: record.gateway,
+            gatewayPaymentId: record.gatewayPaymentId,
+            gatewaySignature: record.gatewaySignature,
+            amount: record.amount,
+            currency: record.currency,
+            status: record.status,
+            failureReason: record.failureReason,
+            metadata: record.metadata,
+            createdAt: record.createdAt,
+            updatedAt: record.updatedAt,
+          } as any);
+        } catch {}
         return record;
-      } catch {
+      } catch (err: any) {
+        if (shouldEnforceDurablePersistence()) {
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during createPaymentOrder:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to create payment order in database: ${err.message || "Unknown error"}`);
+        }
         isPostgresAvailable = false;
       }
+    } else if (shouldEnforceDurablePersistence()) {
+      throw new Error("DATABASE_PERSISTENCE_FAILED: Database connection to Neon PostgreSQL is unavailable.");
     }
 
     const now = new Date();
@@ -5319,6 +5794,37 @@ export const dbRepo = {
       },
     });
 
+    if (await canUsePrisma()) {
+      try {
+        await (prisma as any).razorpayOrderRecord.upsert({
+          where: { orderId: data.orderId },
+          create: {
+            orderId: data.orderId,
+            appointmentId: data.appointmentId,
+            amountInPaise: data.amountInPaise,
+            currency,
+            purpose: data.purpose,
+            environment: env,
+            status: "CREATED",
+            metadata: data.metadata ? JSON.stringify(data.metadata) : null,
+          },
+          update: {
+            amountInPaise: data.amountInPaise,
+            purpose: data.purpose,
+            environment: env,
+            status: "CREATED",
+          },
+        });
+      } catch (err: any) {
+        if (shouldEnforceDurablePersistence()) {
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during recordRazorpayOrder:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to record Razorpay order in database: ${err.message || "Unknown error"}`);
+        }
+      }
+    } else if (shouldEnforceDurablePersistence()) {
+      throw new Error("DATABASE_PERSISTENCE_FAILED: Database connection to Neon PostgreSQL is unavailable.");
+    }
+
     return { order: memOrder, payment };
   },
 
@@ -5361,6 +5867,158 @@ export const dbRepo = {
       ? PaymentTransactionStatus.SUCCESS
       : PaymentTransactionStatus.FAILED;
 
+    const transactionRef = data.razorpayOrderId ? `TXN_${data.razorpayOrderId}` : `PAY_${Date.now()}`;
+    const amountInINR = data.amountInPaise
+      ? data.amountInPaise / 100
+      : apt.depositAmount || apt.totalAmount;
+
+    let newPaymentStatus: PaymentStatus = PaymentStatus.PAID;
+    let newRemaining = 0;
+    if (amountInINR < apt.totalAmount) {
+      newRemaining = Math.max(0, apt.totalAmount - amountInINR);
+      newPaymentStatus = PaymentStatus.PARTIALLY_PAID;
+    } else {
+      newRemaining = 0;
+      newPaymentStatus = PaymentStatus.PAID;
+    }
+
+    // Authoritative Neon PostgreSQL Persistence
+    if (await canUsePrisma()) {
+      try {
+        const existingTx = await prisma.paymentRecord.findFirst({
+          where: {
+            OR: [
+              { gatewayPaymentId: data.razorpayPaymentId },
+              { transactionRef },
+            ],
+          },
+        });
+
+        if (existingTx && existingTx.status === PaymentTransactionStatus.SUCCESS && existingTx.gatewayPaymentId === data.razorpayPaymentId) {
+          return {
+            success: true,
+            message: "Payment already verified and processed.",
+            isDuplicate: true,
+            payment: existingTx,
+            appointment: apt,
+          };
+        }
+
+        const payment = await prisma.paymentRecord.upsert({
+          where: { transactionRef },
+          create: {
+            appointmentId: data.appointmentId,
+            transactionRef,
+            gateway: PaymentGateway.RAZORPAY,
+            gatewayPaymentId: data.razorpayPaymentId,
+            gatewaySignature: data.razorpaySignature,
+            amount: amountInINR,
+            currency: "INR",
+            status,
+            failureReason: data.signatureValid ? null : (data.failureReason || "Signature verification failed"),
+            metadata: JSON.stringify({
+              razorpayOrderId: data.razorpayOrderId,
+              razorpayPaymentId: data.razorpayPaymentId,
+              method: data.method,
+            }),
+          },
+          update: {
+            gatewayPaymentId: data.razorpayPaymentId,
+            gatewaySignature: data.razorpaySignature,
+            status,
+            failureReason: data.signatureValid ? null : (data.failureReason || "Signature verification failed"),
+            amount: amountInINR,
+            updatedAt: now,
+          },
+        });
+
+        if (!data.signatureValid) {
+          return {
+            success: false,
+            error: data.failureReason || "Payment verification failed: invalid signature.",
+            payment,
+          };
+        }
+
+        const updatedApt = await prisma.appointment.update({
+          where: { id: data.appointmentId },
+          data: {
+            depositAmount: amountInINR,
+            remainingAmount: newRemaining,
+            paymentStatus: newPaymentStatus,
+            paymentMethod: "RAZORPAY_ONLINE",
+            status: AppointmentStatus.CONFIRMED,
+            updatedAt: now,
+          },
+          include: {
+            customerProfile: { include: { user: true } },
+            staff: { include: { user: true } },
+            appointmentServices: { include: { service: true } },
+          },
+        });
+
+        if (data.razorpayOrderId) {
+          try {
+            await (prisma as any).razorpayOrderRecord.updateMany({
+              where: { orderId: data.razorpayOrderId },
+              data: { status: "PAID" },
+            });
+          } catch {}
+        }
+
+        await this.notifyAdmins(
+          "Online Payment Confirmed",
+          `Payment of ₹${amountInINR} for booking ${apt.appointmentNumber} was captured via Razorpay (ID: ${data.razorpayPaymentId}).`,
+          `/admin/appointments`
+        );
+
+        await this.logAudit({
+          action: "PAYMENT_CAPTURED",
+          entity: "PaymentRecord",
+          entityId: payment.id,
+          details: JSON.stringify({
+            appointmentId: data.appointmentId,
+            appointmentNumber: apt.appointmentNumber,
+            amount: amountInINR,
+            razorpayPaymentId: data.razorpayPaymentId,
+            paymentStatus: newPaymentStatus,
+          }),
+        });
+
+        // Synchronize in-memory structures
+        let memTx = memoryDb.payments.find((p) => p.transactionRef === transactionRef || p.gatewayPaymentId === data.razorpayPaymentId);
+        if (!memTx) {
+          memoryDb.payments.unshift(payment as any);
+        } else {
+          Object.assign(memTx, payment);
+        }
+        const memApt = memoryDb.appointments.find((a) => a.id === data.appointmentId);
+        if (memApt) {
+          memApt.depositAmount = amountInINR;
+          memApt.remainingAmount = newRemaining;
+          memApt.paymentStatus = newPaymentStatus;
+          memApt.paymentMethod = "RAZORPAY_ONLINE";
+          memApt.status = AppointmentStatus.CONFIRMED;
+          memApt.updatedAt = now;
+        }
+
+        return {
+          success: true,
+          message: "Payment captured successfully via Razorpay.",
+          payment,
+          appointment: updatedApt,
+        };
+      } catch (err: any) {
+        if (shouldEnforceDurablePersistence()) {
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during verifyRazorpayPayment:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to record verified payment in Neon PostgreSQL: ${err.message || "Unknown error"}`);
+        }
+        isPostgresAvailable = false;
+      }
+    } else if (shouldEnforceDurablePersistence()) {
+      throw new Error("DATABASE_PERSISTENCE_FAILED: Database connection to Neon PostgreSQL is unavailable.");
+    }
+
     let tx = memoryDb.payments.find(
       (p) =>
         (data.razorpayOrderId && p.transactionRef.includes(data.razorpayOrderId)) ||
@@ -5377,10 +6035,6 @@ export const dbRepo = {
         appointment: apt,
       };
     }
-
-    const amountInINR = data.amountInPaise
-      ? data.amountInPaise / 100
-      : tx?.amount || apt.depositAmount || apt.totalAmount;
 
     if (!tx) {
       tx = {
@@ -5421,9 +6075,6 @@ export const dbRepo = {
     }
 
     const memApt = memoryDb.appointments.find((a) => a.id === data.appointmentId);
-    let newPaymentStatus: PaymentStatus = PaymentStatus.PAID;
-    let newRemaining = 0;
-
     if (memApt) {
       if (amountInINR < memApt.totalAmount) {
         newRemaining = Math.max(0, memApt.totalAmount - amountInINR);
@@ -5748,6 +6399,131 @@ export const dbRepo = {
     limit?: number;
     offset?: number;
   }) {
+    if (await canUsePrisma()) {
+      try {
+        const where: Record<string, any> = {};
+        if (filters?.status && filters.status !== "ALL") {
+          if (filters.status === "CAPTURED" || filters.status === "SUCCESS") {
+            where.status = PaymentTransactionStatus.SUCCESS;
+          } else {
+            where.status = filters.status;
+          }
+        }
+        if (filters?.startDate || filters?.endDate) {
+          where.createdAt = {};
+          if (filters?.startDate) {
+            where.createdAt.gte = new Date(filters.startDate);
+          }
+          if (filters?.endDate) {
+            const end = new Date(filters.endDate);
+            end.setHours(23, 59, 59, 999);
+            where.createdAt.lte = end;
+          }
+        }
+
+        const dbRecords = await prisma.paymentRecord.findMany({
+          where,
+          include: {
+            appointment: {
+              include: {
+                customerProfile: { include: { user: true } },
+              },
+            },
+          },
+          orderBy: { createdAt: "desc" },
+        });
+
+        const enriched = dbRecords.map((p) => {
+          const apt = p.appointment;
+          const user = apt?.customerProfile?.user;
+          let meta: any = {};
+          try {
+            if (p.metadata) meta = JSON.parse(p.metadata);
+          } catch {}
+
+          const env = meta.environment || (p.gateway === PaymentGateway.RAZORPAY ? "TEST" : "OFFLINE");
+          const method = p.gateway === PaymentGateway.RAZORPAY ? "Razorpay Online" : (meta.paymentMethod || "Cash at Counter");
+          const purpose = meta.paymentPurpose || (p.amount < (apt?.totalAmount || 0) ? "ADVANCE_DEPOSIT" : "FULL_PAYMENT");
+
+          return {
+            id: p.id,
+            transactionRef: p.transactionRef,
+            appointmentId: p.appointmentId,
+            appointmentNumber: apt?.appointmentNumber || "N/A",
+            customerName: user?.name || meta.customerName || "Salon Client",
+            customerPhone: user?.phone || "",
+            amount: p.amount,
+            amountInPaise: Math.round(p.amount * 100),
+            currency: p.currency || "INR",
+            paymentPurpose: purpose,
+            paymentMethod: method,
+            environment: env,
+            status: p.status === PaymentTransactionStatus.SUCCESS ? "CAPTURED" : p.status,
+            razorpayOrderId: meta.razorpayOrderId || null,
+            razorpayPaymentId: p.gatewayPaymentId,
+            refundedAmount: 0,
+            failureReason: p.failureReason,
+            recordedBy: meta.recordedBy || null,
+            createdAt: p.createdAt,
+            updatedAt: p.updatedAt,
+          };
+        });
+
+        let filtered = enriched;
+        if (filters?.environment && filters.environment !== "ALL") {
+          filtered = filtered.filter((t) => t.environment === filters.environment);
+        }
+        if (filters?.paymentMethod && filters.paymentMethod !== "ALL") {
+          filtered = filtered.filter((t) =>
+            t.paymentMethod.toLowerCase().includes(filters.paymentMethod!.toLowerCase())
+          );
+        }
+        if (filters?.search && filters.search.trim()) {
+          const q = filters.search.toLowerCase();
+          filtered = filtered.filter(
+            (t) =>
+              t.customerName.toLowerCase().includes(q) ||
+              t.customerPhone.includes(q) ||
+              t.appointmentNumber.toLowerCase().includes(q) ||
+              t.transactionRef.toLowerCase().includes(q) ||
+              (t.razorpayPaymentId && t.razorpayPaymentId.toLowerCase().includes(q)) ||
+              (t.razorpayOrderId && t.razorpayOrderId.toLowerCase().includes(q))
+          );
+        }
+
+        const totalCollected = enriched
+          .filter((t) => t.status === "CAPTURED")
+          .reduce((sum, t) => sum + t.amount, 0);
+        const totalRefunded = enriched.reduce((sum, t) => sum + (t.refundedAmount || 0), 0);
+        const totalOnline = enriched
+          .filter((t) => t.status === "CAPTURED" && t.environment !== "OFFLINE")
+          .reduce((sum, t) => sum + t.amount, 0);
+        const totalOffline = enriched
+          .filter((t) => t.status === "CAPTURED" && t.environment === "OFFLINE")
+          .reduce((sum, t) => sum + t.amount, 0);
+
+        const stats = {
+          totalCollected,
+          totalRefunded,
+          totalOnline,
+          totalOffline,
+          netCollected: Math.max(0, totalCollected - totalRefunded),
+          capturedCount: enriched.filter((t) => t.status === "CAPTURED").length,
+          pendingCount: enriched.filter((t) => t.status === "PENDING").length,
+          failedCount: enriched.filter((t) => t.status === "FAILED").length,
+          refundedCount: enriched.filter((t) => t.status === "REFUNDED" || (t.refundedAmount || 0) > 0).length,
+        };
+
+        return {
+          transactions: filtered,
+          stats,
+          totalCount: filtered.length,
+        };
+      } catch (err) {
+        console.warn("[PAYMENTS_PRISMA_FETCH_FAILED]", err);
+      }
+    }
+
     let list = [...memoryDb.payments];
 
     if (filters?.environment && filters.environment !== "ALL") {
@@ -5834,17 +6610,23 @@ export const dbRepo = {
       );
     }
 
+    const totalCollected = enriched
+      .filter((t) => t.status === "CAPTURED")
+      .reduce((sum, t) => sum + t.amount, 0);
+    const totalRefunded = enriched.reduce((sum, t) => sum + (t.refundedAmount || 0), 0);
+    const totalOnline = enriched
+      .filter((t) => t.status === "CAPTURED" && t.environment !== "OFFLINE")
+      .reduce((sum, t) => sum + t.amount, 0);
+    const totalOffline = enriched
+      .filter((t) => t.status === "CAPTURED" && t.environment === "OFFLINE")
+      .reduce((sum, t) => sum + t.amount, 0);
+
     const stats = {
-      totalCollected: enriched
-        .filter((t) => t.status === "CAPTURED")
-        .reduce((sum, t) => sum + t.amount, 0),
-      totalRefunded: enriched.reduce((sum, t) => sum + (t.refundedAmount || 0), 0),
-      totalOnline: enriched
-        .filter((t) => t.status === "CAPTURED" && t.environment !== "OFFLINE")
-        .reduce((sum, t) => sum + t.amount, 0),
-      totalOffline: enriched
-        .filter((t) => t.status === "CAPTURED" && t.environment === "OFFLINE")
-        .reduce((sum, t) => sum + t.amount, 0),
+      totalCollected,
+      totalRefunded,
+      totalOnline,
+      totalOffline,
+      netCollected: Math.max(0, totalCollected - totalRefunded),
       capturedCount: enriched.filter((t) => t.status === "CAPTURED").length,
       pendingCount: enriched.filter((t) => t.status === "PENDING").length,
       failedCount: enriched.filter((t) => t.status === "FAILED").length,
@@ -5859,6 +6641,57 @@ export const dbRepo = {
   },
 
   async getPaymentTransactionById(id: string) {
+    if (await canUsePrisma()) {
+      try {
+        const dbP = await prisma.paymentRecord.findFirst({
+          where: { OR: [{ id }, { transactionRef: id }, { gatewayPaymentId: id }] },
+          include: {
+            appointment: {
+              include: {
+                customerProfile: { include: { user: true } },
+                staff: { include: { user: true } },
+                appointmentServices: { include: { service: true } },
+              },
+            },
+          },
+        });
+        if (dbP) {
+          const apt = dbP.appointment;
+          const user = apt?.customerProfile?.user;
+          let meta: any = {};
+          try {
+            if (dbP.metadata) meta = JSON.parse(dbP.metadata);
+          } catch {}
+
+          return {
+            id: dbP.id,
+            transactionRef: dbP.transactionRef,
+            appointmentId: dbP.appointmentId,
+            appointment: apt,
+            amount: dbP.amount,
+            amountInPaise: Math.round(dbP.amount * 100),
+            currency: dbP.currency || "INR",
+            status: dbP.status === PaymentTransactionStatus.SUCCESS ? "CAPTURED" : dbP.status,
+            environment: meta.environment || (dbP.gateway === PaymentGateway.RAZORPAY ? "TEST" : "OFFLINE"),
+            paymentMethod: dbP.gateway === PaymentGateway.RAZORPAY ? "Razorpay Online" : (meta.paymentMethod || "Cash at Counter"),
+            paymentPurpose: meta.paymentPurpose || (dbP.amount < (apt?.totalAmount || 0) ? "ADVANCE_DEPOSIT" : "FULL_PAYMENT"),
+            customerName: user?.name || meta.customerName || "Salon Client",
+            customerPhone: user?.phone || "",
+            customerEmail: user?.email || meta.customerEmail || null,
+            razorpayPaymentId: dbP.gatewayPaymentId,
+            razorpayOrderId: meta.razorpayOrderId || null,
+            failureReason: dbP.failureReason,
+            refundedAmount: 0,
+            recordedBy: meta.recordedBy || null,
+            createdAt: dbP.createdAt,
+            updatedAt: dbP.updatedAt,
+          };
+        }
+      } catch (err) {
+        console.warn("[PAYMENT_BY_ID_PRISMA_FETCH_FAILED]", err);
+      }
+    }
+
     const p = memoryDb.payments.find((t) => t.id === id || t.transactionRef === id);
     if (!p) return null;
 
@@ -5931,13 +6764,33 @@ export const dbRepo = {
   // 3. CUSTOMER MANAGEMENT (CRM)
   // -----------------------------------------------------------
   async getAllCustomers(search?: string) {
+    const nowStr = getKolkataDateString();
+    const toDateStr = (d: any) =>
+      !d ? "" : typeof d === "string" ? (d.includes("T") ? d.split("T")[0] : d) : getKolkataDateString(d);
+    const isUpcomingStatus = (st: any) =>
+      st === AppointmentStatus.CONFIRMED ||
+      st === AppointmentStatus.PENDING ||
+      st === AppointmentStatus.CHECKED_IN ||
+      st === AppointmentStatus.IN_PROGRESS;
+    const isCancelledStatus = (st: any) =>
+      st === AppointmentStatus.CANCELLED || st === AppointmentStatus.REJECTED;
+
     if (await canUsePrisma()) {
       try {
         const customers = await prisma.customerProfile.findMany({
           include: {
             user: true,
             appointments: {
-              select: { id: true, appointmentDate: true, status: true, totalAmount: true },
+              select: {
+                id: true,
+                appointmentDate: true,
+                startTime: true,
+                status: true,
+                totalAmount: true,
+                depositAmount: true,
+                remainingAmount: true,
+                paymentStatus: true,
+              },
               orderBy: { appointmentDate: "desc" },
             },
           },
@@ -5945,26 +6798,119 @@ export const dbRepo = {
         });
 
         if (customers && customers.length > 0) {
+          const mapped = customers.map((c) => {
+            const apts = c.appointments || [];
+            const totalBookings = apts.length;
+            const completedVisits = apts.filter((a) => a.status === AppointmentStatus.COMPLETED).length;
+            const upcomingAppointments = apts.filter((a) => {
+              const ad = toDateStr(a.appointmentDate);
+              return ad >= nowStr && isUpcomingStatus(a.status);
+            }).length;
+            const cancelledAppointments = apts.filter((a) => isCancelledStatus(a.status)).length;
+            const noShowCount = apts.filter((a) => a.status === AppointmentStatus.NO_SHOW).length;
+            const totalSpent = apts
+              .filter((a) => a.status === AppointmentStatus.COMPLETED || a.paymentStatus === PaymentStatus.PAID)
+              .reduce((sum, a) => sum + (a.totalAmount || 0), 0);
+            const outstandingBalance = apts
+              .filter(
+                (a) =>
+                  !isCancelledStatus(a.status) &&
+                  a.paymentStatus !== PaymentStatus.PAID &&
+                  (a.remainingAmount || 0) > 0
+              )
+              .reduce((sum, a) => sum + (a.remainingAmount || 0), 0);
+
+            const completedApts = apts.filter((a) => a.status === AppointmentStatus.COMPLETED);
+            const lastVisitDate = completedApts[0]
+              ? toDateStr(completedApts[0].appointmentDate)
+              : null;
+
+            const upcomingApts = apts
+              .filter((a) => {
+                const ad = toDateStr(a.appointmentDate);
+                return ad >= nowStr && isUpcomingStatus(a.status);
+              })
+              .reverse();
+            const nextAppointmentDate = upcomingApts[0]
+              ? toDateStr(upcomingApts[0].appointmentDate)
+              : null;
+
+            const loyaltyTier =
+              totalSpent >= 10000 || completedVisits >= 5
+                ? "VIP"
+                : completedVisits >= 2
+                ? "REGULAR"
+                : "NEW";
+
+            return {
+              ...c,
+              totalBookings,
+              completedVisits,
+              upcomingAppointments,
+              cancelledAppointments,
+              noShowCount,
+              totalSpent,
+              outstandingBalance,
+              lastVisitDate,
+              nextAppointmentDate,
+              loyaltyTier,
+              lastAppointmentDate: apts[0] ? toDateStr(apts[0].appointmentDate) : null,
+            };
+          });
+
           if (search) {
-            const q = search.toLowerCase();
-            return customers.filter(
+            const q = search.toLowerCase().trim();
+            return mapped.filter(
               (c) =>
                 c.user.name.toLowerCase().includes(q) ||
                 c.user.phone.includes(q) ||
                 (c.user.email && c.user.email.toLowerCase().includes(q))
             );
           }
-          return customers;
+          return mapped;
         }
       } catch {
         isPostgresAvailable = false;
       }
     }
 
+    // Memory fallback
     let list = memoryDb.customerProfiles.map((p) => {
       const user = memoryDb.users.find((u) => u.id === p.userId);
       const userApts = memoryDb.appointments.filter((a) => a.customerProfileId === p.id);
-      const lastApt = userApts[userApts.length - 1];
+      const totalBookings = userApts.length;
+      const completedVisits = userApts.filter((a) => a.status === AppointmentStatus.COMPLETED).length;
+      const upcomingAppointments = userApts.filter(
+        (a) => a.appointmentDate >= nowStr && isUpcomingStatus(a.status)
+      ).length;
+      const cancelledAppointments = userApts.filter((a) => isCancelledStatus(a.status)).length;
+      const noShowCount = userApts.filter((a) => a.status === AppointmentStatus.NO_SHOW).length;
+      const totalSpent = userApts
+        .filter((a) => a.status === AppointmentStatus.COMPLETED || a.paymentStatus === PaymentStatus.PAID)
+        .reduce((sum, a) => sum + (a.totalAmount || 0), 0);
+      const outstandingBalance = userApts
+        .filter(
+          (a) =>
+            !isCancelledStatus(a.status) &&
+            a.paymentStatus !== PaymentStatus.PAID &&
+            (a.remainingAmount || 0) > 0
+        )
+        .reduce((sum, a) => sum + (a.remainingAmount || 0), 0);
+
+      const completedApts = userApts.filter((a) => a.status === AppointmentStatus.COMPLETED);
+      const lastVisitDate = completedApts[0] ? completedApts[0].appointmentDate : null;
+
+      const upcomingApts = userApts
+        .filter((a) => a.appointmentDate >= nowStr && isUpcomingStatus(a.status))
+        .reverse();
+      const nextAppointmentDate = upcomingApts[0] ? upcomingApts[0].appointmentDate : null;
+
+      const loyaltyTier =
+        totalSpent >= 10000 || completedVisits >= 5
+          ? "VIP"
+          : completedVisits >= 2
+          ? "REGULAR"
+          : "NEW";
 
       return {
         ...p,
@@ -5978,12 +6924,22 @@ export const dbRepo = {
           isActive: true,
         },
         appointments: userApts,
-        lastAppointmentDate: lastApt ? lastApt.appointmentDate : null,
+        totalBookings,
+        completedVisits,
+        upcomingAppointments,
+        cancelledAppointments,
+        noShowCount,
+        totalSpent,
+        outstandingBalance,
+        lastVisitDate,
+        nextAppointmentDate,
+        loyaltyTier,
+        lastAppointmentDate: userApts[0] ? userApts[0].appointmentDate : null,
       };
     });
 
     if (search) {
-      const q = search.toLowerCase();
+      const q = search.toLowerCase().trim();
       list = list.filter(
         (c) =>
           c.user.name.toLowerCase().includes(q) ||
@@ -5993,6 +6949,199 @@ export const dbRepo = {
     }
 
     return list;
+  },
+
+  async getCustomerProfileDetails(profileId: string) {
+    const nowStr = getKolkataDateString();
+    const toDateStr = (d: any) =>
+      !d ? "" : typeof d === "string" ? (d.includes("T") ? d.split("T")[0] : d) : getKolkataDateString(d);
+    const isUpcomingStatus = (st: any) =>
+      st === AppointmentStatus.CONFIRMED ||
+      st === AppointmentStatus.PENDING ||
+      st === AppointmentStatus.CHECKED_IN ||
+      st === AppointmentStatus.IN_PROGRESS;
+    const isCancelledStatus = (st: any) =>
+      st === AppointmentStatus.CANCELLED || st === AppointmentStatus.REJECTED;
+
+    if (await canUsePrisma()) {
+      try {
+        const customer = await prisma.customerProfile.findUnique({
+          where: { id: profileId },
+          include: {
+            user: true,
+            appointments: {
+              include: {
+                appointmentServices: { include: { service: true } },
+                staff: { include: { user: true } },
+                package: true,
+              },
+              orderBy: [{ appointmentDate: "desc" }, { startTime: "desc" }],
+            },
+          },
+        });
+
+        if (customer) {
+          const appointments = customer.appointments;
+          const totalBookings = appointments.length;
+          const completedVisits = appointments.filter((a) => a.status === AppointmentStatus.COMPLETED).length;
+          const upcomingAppointments = appointments.filter((a) => {
+            const ad = toDateStr(a.appointmentDate);
+            return ad >= nowStr && isUpcomingStatus(a.status);
+          }).length;
+          const cancelledAppointments = appointments.filter((a) => isCancelledStatus(a.status)).length;
+          const noShowCount = appointments.filter((a) => a.status === AppointmentStatus.NO_SHOW).length;
+          const totalSpent = appointments
+            .filter((a) => a.status === AppointmentStatus.COMPLETED || a.paymentStatus === PaymentStatus.PAID)
+            .reduce((sum, a) => sum + (a.totalAmount || 0), 0);
+          const outstandingBalance = appointments
+            .filter(
+              (a) =>
+                !isCancelledStatus(a.status) &&
+                a.paymentStatus !== PaymentStatus.PAID &&
+                (a.remainingAmount || 0) > 0
+            )
+            .reduce((sum, a) => sum + (a.remainingAmount || 0), 0);
+          const totalAdvancePaid = appointments.reduce((sum, a) => sum + (a.depositAmount || 0), 0);
+
+          const completedList = appointments.filter((a) => a.status === AppointmentStatus.COMPLETED);
+          const lastVisitDate = completedList[0]
+            ? toDateStr(completedList[0].appointmentDate)
+            : null;
+
+          const upcomingList = appointments
+            .filter((a) => {
+              const ad = toDateStr(a.appointmentDate);
+              return ad >= nowStr && isUpcomingStatus(a.status);
+            })
+            .reverse();
+          const nextAppointmentDate = upcomingList[0]
+            ? toDateStr(upcomingList[0].appointmentDate)
+            : null;
+
+          const loyaltyTier =
+            totalSpent >= 10000 || completedVisits >= 5
+              ? "VIP"
+              : completedVisits >= 2
+              ? "REGULAR"
+              : "NEW";
+
+          const metrics = {
+            totalBookings,
+            completedVisits,
+            upcomingAppointments,
+            cancelledAppointments,
+            noShowCount,
+            totalSpent,
+            outstandingBalance,
+            lastVisitDate,
+            nextAppointmentDate,
+            loyaltyTier,
+          };
+
+          const financialSummary = {
+            totalBilled: appointments.reduce((sum, a) => sum + (a.totalAmount || 0), 0),
+            totalAdvancePaid,
+            outstandingBalance,
+            paymentMethodsUsed: Array.from(
+              new Set(appointments.map((a) => a.paymentMethod).filter(Boolean))
+            ),
+          };
+
+          return {
+            customer,
+            metrics,
+            bookingHistory: appointments,
+            visitHistory: completedList,
+            financialSummary,
+          };
+        }
+      } catch {
+        isPostgresAvailable = false;
+      }
+    }
+
+    // In-memory fallback
+    const memCust = memoryDb.customerProfiles.find((p) => p.id === profileId);
+    if (!memCust) throw new Error("Customer profile not found");
+    const memUser = memoryDb.users.find((u) => u.id === memCust.userId);
+    const apts = memoryDb.appointments
+      .filter((a) => a.customerProfileId === profileId)
+      .map((a) => {
+        const stf = memoryDb.staff.find((s) => s.id === a.staffId);
+        const srvs = a.serviceIds.map((sid) => memoryDb.services.find((s) => s.id === sid)).filter(Boolean);
+        const pkg = a.packageId ? memoryDb.packages.find((p) => p.id === a.packageId) : null;
+        return {
+          ...a,
+          customerProfile: { ...memCust, user: memUser },
+          staff: stf ? { ...stf, user: { name: stf.name } } : null,
+          package: pkg || null,
+          appointmentServices: srvs.map((s) => ({
+            id: `as_${s!.id}`,
+            serviceId: s!.id,
+            price: s!.discountedPrice ?? s!.price,
+            durationMinutes: s!.durationMinutes,
+            service: s,
+          })),
+        };
+      })
+      .sort((a, b) => (b.appointmentDate + b.startTime).localeCompare(a.appointmentDate + a.startTime));
+
+    const totalBookings = apts.length;
+    const completedVisits = apts.filter((a) => a.status === AppointmentStatus.COMPLETED).length;
+    const upcomingAppointments = apts.filter(
+      (a) => toDateStr(a.appointmentDate) >= nowStr && isUpcomingStatus(a.status)
+    ).length;
+    const cancelledAppointments = apts.filter((a) => isCancelledStatus(a.status)).length;
+    const noShowCount = apts.filter((a) => a.status === AppointmentStatus.NO_SHOW).length;
+    const totalSpent = apts
+      .filter((a) => a.status === AppointmentStatus.COMPLETED || a.paymentStatus === PaymentStatus.PAID)
+      .reduce((sum, a) => sum + (a.totalAmount || 0), 0);
+    const outstandingBalance = apts
+      .filter(
+        (a) =>
+          !isCancelledStatus(a.status) &&
+          a.paymentStatus !== PaymentStatus.PAID &&
+          (a.remainingAmount || 0) > 0
+      )
+      .reduce((sum, a) => sum + (a.remainingAmount || 0), 0);
+    const totalAdvancePaid = apts.reduce((sum, a) => sum + (a.depositAmount || 0), 0);
+
+    const completedList = apts.filter((a) => a.status === AppointmentStatus.COMPLETED);
+    const lastVisitDate = completedList[0] ? toDateStr(completedList[0].appointmentDate) : null;
+    const upcomingList = apts
+      .filter((a) => toDateStr(a.appointmentDate) >= nowStr && isUpcomingStatus(a.status))
+      .reverse();
+    const nextAppointmentDate = upcomingList[0] ? toDateStr(upcomingList[0].appointmentDate) : null;
+    const loyaltyTier =
+      totalSpent >= 10000 || completedVisits >= 5
+        ? "VIP"
+        : completedVisits >= 2
+        ? "REGULAR"
+        : "NEW";
+
+    return {
+      customer: { ...memCust, user: memUser },
+      metrics: {
+        totalBookings,
+        completedVisits,
+        upcomingAppointments,
+        cancelledAppointments,
+        noShowCount,
+        totalSpent,
+        outstandingBalance,
+        lastVisitDate,
+        nextAppointmentDate,
+        loyaltyTier,
+      },
+      bookingHistory: apts,
+      visitHistory: completedList,
+      financialSummary: {
+        totalBilled: apts.reduce((sum, a) => sum + (a.totalAmount || 0), 0),
+        totalAdvancePaid,
+        outstandingBalance,
+        paymentMethodsUsed: Array.from(new Set(apts.map((a) => a.paymentMethod).filter(Boolean))),
+      },
+    };
   },
 
   async updateCustomerNotes(profileId: string, notes: string) {
@@ -6280,7 +7429,7 @@ export const dbRepo = {
           where,
           orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
         });
-        if (images && images.length > 0) return images;
+        return images;
       } catch {
         isPostgresAvailable = false;
       }
@@ -6375,7 +7524,7 @@ export const dbRepo = {
           include: { service: true, staff: { include: { user: true } } },
           orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
         });
-        if (list && list.length > 0) return list;
+        return list;
       } catch {
         isPostgresAvailable = false;
       }
@@ -6398,24 +7547,24 @@ export const dbRepo = {
         const created = await prisma.transformation.create({
           data: {
             title: data.title,
-            description: data.description,
+            description: data.description || null,
             beforeImageUrl: data.beforeImageUrl,
             afterImageUrl: data.afterImageUrl,
-            serviceId: data.serviceId,
-            staffId: data.staffId,
-            clientGender: data.clientGender,
-            isFeatured: data.isFeatured,
-            sortOrder: data.sortOrder,
+            serviceId: data.serviceId ? data.serviceId : null,
+            staffId: data.staffId ? data.staffId : null,
+            clientGender: data.clientGender || "UNISEX",
+            isFeatured: data.isFeatured !== undefined ? data.isFeatured : true,
+            sortOrder: data.sortOrder || 0,
           },
         });
         return created;
-      } catch {
-        isPostgresAvailable = false;
+      } catch (err) {
+        console.error("Prisma createTransformation error:", err);
       }
     }
 
     const newTf: MemoryTransformation = {
-      id: `tf_${Date.now()}`,
+      id: `tf_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       title: data.title,
       description: data.description || null,
       beforeImageUrl: data.beforeImageUrl,
@@ -6435,13 +7584,24 @@ export const dbRepo = {
   async updateTransformation(id: string, data: Partial<AdminTransformationInput>) {
     if (await canUsePrisma()) {
       try {
+        const updateData: Record<string, any> = {};
+        if (data.title !== undefined) updateData.title = data.title;
+        if (data.description !== undefined) updateData.description = data.description || null;
+        if (data.beforeImageUrl !== undefined) updateData.beforeImageUrl = data.beforeImageUrl;
+        if (data.afterImageUrl !== undefined) updateData.afterImageUrl = data.afterImageUrl;
+        if (data.serviceId !== undefined) updateData.serviceId = data.serviceId ? data.serviceId : null;
+        if (data.staffId !== undefined) updateData.staffId = data.staffId ? data.staffId : null;
+        if (data.clientGender !== undefined) updateData.clientGender = data.clientGender;
+        if (data.isFeatured !== undefined) updateData.isFeatured = data.isFeatured;
+        if (data.sortOrder !== undefined) updateData.sortOrder = data.sortOrder;
+
         const updated = await prisma.transformation.update({
           where: { id },
-          data: data as any,
+          data: updateData,
         });
         return updated;
-      } catch {
-        isPostgresAvailable = false;
+      } catch (err) {
+        console.error("Prisma updateTransformation error:", err);
       }
     }
 
@@ -6483,7 +7643,7 @@ export const dbRepo = {
           include: { customerProfile: { include: { user: true } } },
           orderBy: { createdAt: "desc" },
         });
-        if (revs && revs.length > 0) return revs;
+        return revs;
       } catch {
         isPostgresAvailable = false;
       }
@@ -6774,7 +7934,7 @@ export const dbRepo = {
         const coupons = await prisma.coupon.findMany({
           orderBy: { createdAt: "desc" },
         });
-        if (coupons && coupons.length > 0) return coupons;
+        return coupons;
       } catch {
         isPostgresAvailable = false;
       }
@@ -6870,7 +8030,7 @@ export const dbRepo = {
           where,
           orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
         });
-        if (videos && videos.length > 0) return videos;
+        return videos;
       } catch {
         isPostgresAvailable = false;
       }
@@ -6962,7 +8122,7 @@ export const dbRepo = {
         const brands = await prisma.brand.findMany({
           orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
         });
-        if (brands && brands.length > 0) return brands;
+        return brands;
       } catch {
         isPostgresAvailable = false;
       }
@@ -7052,7 +8212,7 @@ export const dbRepo = {
           where,
           orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
         });
-        if (faqs && faqs.length > 0) return faqs;
+        return faqs;
       } catch {
         isPostgresAvailable = false;
       }
@@ -7143,7 +8303,7 @@ export const dbRepo = {
           where,
           orderBy: { createdAt: "desc" },
         });
-        if (enquiries && enquiries.length > 0) return enquiries;
+        return enquiries;
       } catch {
         isPostgresAvailable = false;
       }
@@ -7366,7 +8526,7 @@ export const dbRepo = {
           },
           orderBy: { createdAt: "desc" },
         });
-        if (users && users.length > 0) return users;
+        return users;
       } catch {
         isPostgresAvailable = false;
       }
@@ -7617,7 +8777,7 @@ export const dbRepo = {
           where: activeOnly ? { isActive: true } : {},
           orderBy: { price: "asc" },
         });
-        if (addons && addons.length > 0) return addons;
+        return addons;
       } catch {}
     }
     return BRIDAL_ADDONS.map((a) => ({

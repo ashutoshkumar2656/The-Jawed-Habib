@@ -225,6 +225,14 @@ export default function AdminStaffPage() {
         <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-12 text-center text-zinc-500 text-xs">
           Loading stylists directory...
         </div>
+      ) : staffList.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-950/60 p-12 text-center text-zinc-500 text-xs space-y-3">
+          <UserCheck className="h-8 w-8 text-zinc-600 mx-auto" />
+          <p className="text-sm font-medium text-white">No stylists currently registered</p>
+          <p className="text-zinc-500 max-w-sm mx-auto">
+            Click &quot;Add Stylist&quot; above to register your master hair stylists, colorists, and beauty specialists.
+          </p>
+        </div>
       ) : (
         <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden shadow-sm">
           <div className="overflow-x-auto">

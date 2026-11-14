@@ -72,6 +72,10 @@ const VideoModal = dynamic(
 export default function HomePage() {
   const { toast } = useToast();
   const [cms, setCms] = React.useState<Record<string, string>>({});
+  const [reviews, setReviews] = React.useState<any[]>([]);
+  const [loadingReviews, setLoadingReviews] = React.useState<boolean>(true);
+  const [transformations, setTransformations] = React.useState<any[]>([]);
+  const [loadingTransformations, setLoadingTransformations] = React.useState<boolean>(true);
 
   React.useEffect(() => {
     fetch("/api/content")
@@ -80,6 +84,26 @@ export default function HomePage() {
         if (j.success && j.data) setCms(j.data);
       })
       .catch(() => {});
+
+    fetch("/api/reviews")
+      .then((r) => r.json())
+      .then((j) => {
+        if (j.success && Array.isArray(j.data)) {
+          setReviews(j.data);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingReviews(false));
+
+    fetch("/api/transformations")
+      .then((r) => r.json())
+      .then((j) => {
+        if (j.success && Array.isArray(j.data)) {
+          setTransformations(j.data);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingTransformations(false));
   }, []);
 
   // Gallery Lightbox state
@@ -258,94 +282,6 @@ export default function HomePage() {
       description: "German high-performance keratin smoothening and vibrancy color-lock formulas.",
       badge: "German Precision",
       icon: "Layers",
-    },
-  ];
-
-  // Section 13: Before & After Transformations
-  const transformations: TransformationItem[] = [
-    {
-      id: "trans-keratin",
-      title: "L'Oréal Keratin Protein Smoothing Therapy",
-      category: "Hair Makeovers",
-      beforeImage: "/images/transformations/trans-1-before.jpg",
-      afterImage: "/images/transformations/trans-1-after.jpg",
-      stylistRole: "Master Hair Specialist",
-      treatmentName: "Intensive Keratin Infusion",
-      description: "Tamed severe frizz, sealed porous cuticles, and created a sleek, liquid-hair finish lasting 4+ months.",
-    },
-    {
-      id: "trans-balayage",
-      title: "Warm Caramel Balayage & Face-Framing Cut",
-      category: "Hair Colour",
-      beforeImage: "/images/transformations/trans-2-before.jpg",
-      afterImage: "/images/transformations/trans-2-after.jpg",
-      stylistRole: "Senior Color Specialist",
-      treatmentName: "Seamless Balayage Ribbons",
-      description: "Hand-painted dimensional caramel highlights tailored to natural Indian hair tones with zero brassiness.",
-    },
-    {
-      id: "trans-beard",
-      title: "Executive Beard Sculpting & Scissor Fade",
-      category: "Men's Haircuts",
-      beforeImage: "/images/transformations/trans-3-before.jpg",
-      afterImage: "/images/transformations/trans-3-after.jpg",
-      stylistRole: "Senior Barber",
-      treatmentName: "Hot Towel Straight-Razor Service",
-      description: "Crisp cheek line definition, steam-hydrated taper fade, and hot argan oil conditioning.",
-    },
-    {
-      id: "trans-bridal",
-      title: "Royal HD Bridal Artistry & Hair Bun",
-      category: "Hair Makeovers",
-      beforeImage: "/images/transformations/trans-4-before.jpg",
-      afterImage: "/images/transformations/trans-4-after.jpg",
-      stylistRole: "Senior Bridal Director",
-      treatmentName: "HD Bridal Makeup & Royal Bun",
-      description: "Seamless matte base, sculpted contouring, waterproof eye detailing, and traditional floral bun architecture.",
-    },
-  ];
-
-  // Section 14: Customer Reviews (Lalganj Branch Testimonials)
-  const verifiedReviews = [
-    {
-      name: "Ananya Singh",
-      location: "Lalganj Bazaar, Vaishali",
-      date: "October 2026",
-      rating: 5,
-      service: "Bridal HD Makeup & Hair Setting",
-      text: "Booked The Jawed Habib Salon in Lalganj for my wedding reception. The private bridal room was luxurious and peaceful. The team created the most gorgeous look that stayed intact all night without any creases. Truly grateful!",
-    },
-    {
-      name: "Pooja Kumari",
-      location: "Hajipur Road, Lalganj",
-      date: "November 2026",
-      rating: 5,
-      service: "Airbrush Bridal Suite & Draping",
-      text: "I was looking for an international-quality bridal makeup artist in Vaishali district. Jawed Habib Lalganj exceeded all expectations! The airbrush finish was weightless and photographed like an editorial magazine.",
-    },
-    {
-      name: "Rajesh Verma",
-      location: "Tinpulwa Chowk, Lalganj",
-      date: "November 2026",
-      rating: 5,
-      service: "Precision Haircut & Hot Towel Beard Sculpting",
-      text: "Finally, an international-standard salon right in Lalganj! The razor edge work and steam towel beard styling was exceptional. Best grooming experience in Bihar.",
-    },
-    {
-      name: "Priya Ranjan",
-      location: "Vaishali Road, Lalganj",
-      date: "November 2026",
-      rating: 5,
-      service: "Honey Balayage & L'Oréal Hair Spa",
-      text: "Was hesitant to color my hair locally, but their master colorist understood my exact preference. The honey balayage blends seamlessly and my hair feels softer after the spa. 10/10 recommend!",
-    },
-    {
-      name: "Saurav Kumar",
-      location: "Lalganj, Bihar",
-      date: "October 2026",
-      rating: 5,
-      service: "Scissor Fade & D-Tan Cleanup",
-      text: "Extremely hygienic salon. They open sanitized tool packs in front of you. Staff is polite and the online appointment ensured I got my chair the minute I walked in. Five stars!",
     },
   ];
 
@@ -604,13 +540,25 @@ export default function HomePage() {
         </div>
 
         {/* Interactive Slider */}
-        <div className="mx-auto max-w-4xl">
-          <BeforeAfterSlider
-            item={transformations[currentTransIndex]}
-            onPrev={() => setCurrentTransIndex((prev) => (prev - 1 + transformations.length) % transformations.length)}
-            onNext={() => setCurrentTransIndex((prev) => (prev + 1) % transformations.length)}
-          />
-        </div>
+        {loadingTransformations ? (
+          <div className="mx-auto max-w-4xl h-96 animate-pulse rounded-2xl bg-zinc-900/40 border border-zinc-800 flex items-center justify-center">
+            <span className="text-xs text-zinc-500">Loading makeover showcases...</span>
+          </div>
+        ) : transformations.length > 0 ? (
+          <div className="mx-auto max-w-4xl">
+            <BeforeAfterSlider
+              item={transformations[currentTransIndex % transformations.length]}
+              onPrev={() => setCurrentTransIndex((prev) => (prev - 1 + transformations.length) % transformations.length)}
+              onNext={() => setCurrentTransIndex((prev) => (prev + 1) % transformations.length)}
+            />
+          </div>
+        ) : (
+          <div className="mx-auto max-w-md rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/60 p-8 text-center text-zinc-500 text-xs">
+            <Sparkles className="h-8 w-8 text-salon-gold/40 mx-auto mb-2" />
+            <p className="text-sm font-medium text-white mb-1">Makeover Showcases Coming Soon</p>
+            <p className="text-zinc-500">Our senior stylists are documenting real client before & after results at our Lalganj salon.</p>
+          </div>
+        )}
       </section>
 
       {/* ============================================================== */}
@@ -675,37 +623,79 @@ export default function HomePage() {
         </div>
 
         {/* Reviews Grid */}
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {verifiedReviews.map((rev, idx) => (
-            <div
-              key={idx}
-              className="flex flex-col justify-between rounded-2xl border border-white/10 bg-zinc-950 p-6 transition-all duration-300 hover:border-salon-gold/40"
-            >
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex text-salon-gold">
-                    {Array.from({ length: rev.rating }).map((_, i) => (
-                      <Star key={i} className="h-3.5 w-3.5 fill-current" />
-                    ))}
+        {loadingReviews ? (
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {[1, 2, 3].map((n) => (
+              <div key={n} className="h-44 rounded-2xl border border-white/5 bg-zinc-950/40 animate-pulse p-6">
+                <div className="h-4 w-24 bg-zinc-800 rounded mb-4" />
+                <div className="h-3 w-full bg-zinc-800/60 rounded mb-2" />
+                <div className="h-3 w-3/4 bg-zinc-800/60 rounded" />
+              </div>
+            ))}
+          </div>
+        ) : reviews.length > 0 ? (
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {reviews.map((rev, idx) => {
+              const reviewerName = rev.customerName || rev.customerProfile?.user?.name || "Verified Client";
+              const reviewDate = rev.createdAt
+                ? new Date(rev.createdAt).toLocaleDateString("en-IN", { month: "short", year: "numeric" })
+                : "Verified Visit";
+              const reviewLocation = rev.source === "GOOGLE_MAPS" ? "Google Maps Verified" : "Lalganj, Vaishali";
+              const reviewService = rev.category || rev.title || "Salon Service";
+
+              return (
+                <div
+                  key={rev.id || idx}
+                  className="flex flex-col justify-between rounded-2xl border border-white/10 bg-zinc-950 p-6 transition-all duration-300 hover:border-salon-gold/40"
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex text-salon-gold">
+                        {Array.from({ length: rev.rating || 5 }).map((_, i) => (
+                          <Star key={i} className="h-3.5 w-3.5 fill-current" />
+                        ))}
+                      </div>
+                      <span className="text-[11px] text-zinc-500">{reviewDate}</span>
+                    </div>
+
+                    <p className="text-xs leading-relaxed text-zinc-300 italic">
+                      &ldquo;{rev.comment}&rdquo;
+                    </p>
                   </div>
-                  <span className="text-[11px] text-zinc-500">{rev.date}</span>
+
+                  <div className="mt-4 border-t border-white/10 pt-3">
+                    <p className="font-serif text-sm font-bold text-white">{reviewerName}</p>
+                    <span className="text-[10px] text-zinc-500 block">{reviewLocation}</span>
+                    <span className="text-[11px] text-salon-gold font-medium block mt-0.5">
+                      {reviewService}
+                    </span>
+                  </div>
                 </div>
-
-                <p className="text-xs leading-relaxed text-zinc-300 italic">
-                  &ldquo;{rev.text}&rdquo;
-                </p>
-              </div>
-
-              <div className="mt-4 border-t border-white/10 pt-3">
-                <p className="font-serif text-sm font-bold text-white">{rev.name}</p>
-                <span className="text-[10px] text-zinc-500 block">{rev.location}</span>
-                <span className="text-[11px] text-salon-gold font-medium block mt-0.5">
-                  {rev.service}
-                </span>
-              </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="rounded-3xl border border-dashed border-white/10 bg-zinc-950/60 p-12 text-center max-w-xl mx-auto space-y-4">
+            <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-salon-gold/10 text-salon-gold mx-auto">
+              <Star className="h-6 w-6" />
             </div>
-          ))}
-        </div>
+            <h3 className="font-serif text-xl font-bold text-white">Be The First To Share Your Experience</h3>
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              Have you visited our Lalganj salon at 1st Floor Tinpulwa Chowk? We invite you to share your feedback. Genuine verified reviews appear here once verified by our team.
+            </p>
+            <div className="pt-2">
+              <a
+                href={BRAND_CONFIG.location.googleMapsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-full border border-salon-gold/40 bg-salon-gold/10 px-5 py-2.5 text-xs font-semibold text-salon-gold hover:bg-salon-gold hover:text-black transition-colors"
+              >
+                <span>Review on Google Maps</span>
+                <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+            </div>
+          </div>
+        )}
       </section>
 
       {/* ============================================================== */}

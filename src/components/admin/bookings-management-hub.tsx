@@ -32,9 +32,11 @@ import {
   DollarSign,
   AlertTriangle,
   MessageCircle,
+  UserCheck,
 } from "lucide-react";
 import { BRAND_CONFIG } from "@/lib/constants/brand";
 import { format } from "date-fns";
+import { getKolkataDateString, checkNoShowEligibility } from "@/lib/utils/timezone";
 
 export interface BookingRecord {
   id: string;
@@ -164,14 +166,24 @@ export function BookingsManagementHub() {
 
   // Filter Bookings locally by Tab for instantaneous zero-latency navigation
   const filteredBookings = React.useMemo(() => {
-    const todayStr = new Date().toISOString().split("T")[0];
+    const todayStr = getKolkataDateString();
     return bookings.filter((b) => {
       const bDate = typeof b.appointmentDate === "string" ? b.appointmentDate.split("T")[0] : "";
       if (statusTab === "TODAY") return bDate === todayStr;
-      if (statusTab === "UPCOMING") return bDate >= todayStr && (b.status === "CONFIRMED" || b.status === "PENDING");
+      if (statusTab === "UPCOMING")
+        return (
+          bDate >= todayStr &&
+          (b.status === "CONFIRMED" ||
+            b.status === "PENDING" ||
+            b.status === "CHECKED_IN" ||
+            b.status === "IN_PROGRESS")
+        );
       if (statusTab === "PENDING") return b.status === "PENDING";
       if (statusTab === "CONFIRMED") return b.status === "CONFIRMED";
+      if (statusTab === "CHECKED_IN") return b.status === "CHECKED_IN";
+      if (statusTab === "IN_PROGRESS") return b.status === "IN_PROGRESS";
       if (statusTab === "COMPLETED") return b.status === "COMPLETED";
+      if (statusTab === "NO_SHOW") return b.status === "NO_SHOW";
       if (statusTab === "CANCELLED") return b.status === "CANCELLED" || b.status === "REJECTED";
       return true;
     });
@@ -180,15 +192,56 @@ export function BookingsManagementHub() {
   // Aggregate Metrics
   const metrics = React.useMemo(() => {
     const totalCount = bookings.length;
-    const todayStr = new Date().toISOString().split("T")[0];
+    const todayStr = getKolkataDateString();
     const todayCount = bookings.filter((b) => (b.appointmentDate || "").startsWith(todayStr)).length;
     const pendingCount = bookings.filter((b) => b.status === "PENDING").length;
     const confirmedCount = bookings.filter((b) => b.status === "CONFIRMED").length;
+    const checkedInCount = bookings.filter((b) => b.status === "CHECKED_IN").length;
+    const inProgressCount = bookings.filter((b) => b.status === "IN_PROGRESS").length;
+    const completedCount = bookings.filter((b) => b.status === "COMPLETED").length;
+    const noShowCount = bookings.filter((b) => b.status === "NO_SHOW").length;
     const totalCollected = bookings.reduce((sum, b) => sum + (b.depositAmount || 0), 0);
     const totalRemaining = bookings.reduce((sum, b) => sum + (b.remainingAmount || 0), 0);
 
-    return { totalCount, todayCount, pendingCount, confirmedCount, totalCollected, totalRemaining };
+    return {
+      totalCount,
+      todayCount,
+      pendingCount,
+      confirmedCount,
+      checkedInCount,
+      inProgressCount,
+      completedCount,
+      noShowCount,
+      totalCollected,
+      totalRemaining,
+    };
   }, [bookings]);
+
+  const [updatingStatusId, setUpdatingStatusId] = React.useState<string | null>(null);
+
+  const handleQuickStatusUpdate = async (bookingId: string, newStatus: string, reason?: string) => {
+    try {
+      setUpdatingStatusId(bookingId);
+      const res = await fetch(`/api/admin/appointments/${bookingId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: newStatus,
+          adminNotes: reason || `Updated to ${newStatus} from operations hub`,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || `Failed to update booking to ${newStatus}`);
+      }
+      setFeedback({ type: "success", text: `Appointment status updated to ${newStatus}.` });
+      fetchBookings();
+    } catch (err: any) {
+      setFeedback({ type: "error", text: err.message || "Failed to update appointment status" });
+    } finally {
+      setUpdatingStatusId(null);
+    }
+  };
 
   // Handle Counter Payment Collection
   const handleCollectRemaining = async (e: React.FormEvent) => {
@@ -446,11 +499,17 @@ export function BookingsManagementHub() {
         {[
           { id: "ALL", label: "All Bookings", count: bookings.length },
           { id: "TODAY", label: "Today's Visits", count: metrics.todayCount },
-          { id: "UPCOMING", label: "Upcoming", count: metrics.confirmedCount + metrics.pendingCount },
           { id: "PENDING", label: "Pending", count: metrics.pendingCount },
           { id: "CONFIRMED", label: "Confirmed", count: metrics.confirmedCount },
-          { id: "COMPLETED", label: "Completed", count: bookings.filter((b) => b.status === "COMPLETED").length },
-          { id: "CANCELLED", label: "Cancelled", count: bookings.filter((b) => b.status === "CANCELLED").length },
+          { id: "CHECKED_IN", label: "Arrived", count: metrics.checkedInCount },
+          { id: "IN_PROGRESS", label: "In Service", count: metrics.inProgressCount },
+          { id: "COMPLETED", label: "Completed", count: metrics.completedCount },
+          { id: "NO_SHOW", label: "No-Show", count: metrics.noShowCount },
+          {
+            id: "CANCELLED",
+            label: "Cancelled",
+            count: bookings.filter((b) => b.status === "CANCELLED" || b.status === "REJECTED").length,
+          },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -515,11 +574,17 @@ export function BookingsManagementHub() {
 
                   const isPending = b.status === "PENDING";
                   const isConfirmed = b.status === "CONFIRMED";
+                  const isCheckedIn = b.status === "CHECKED_IN";
+                  const isInProgress = b.status === "IN_PROGRESS";
                   const isCompleted = b.status === "COMPLETED";
+                  const isNoShow = b.status === "NO_SHOW";
                   const isCancelled = b.status === "CANCELLED" || b.status === "REJECTED";
 
                   const remainingDue = b.remainingAmount ?? 0;
                   const hasRemaining = remainingDue > 0;
+                  const aptDateStr = b.appointmentDate ? b.appointmentDate.split("T")[0] : "";
+                  const todayStr = getKolkataDateString();
+                  const noShowEligibility = checkNoShowEligibility(b.appointmentDate, b.startTime || "10:00");
 
                   return (
                     <tr key={b.id} className="hover:bg-zinc-900/40 transition-colors">
@@ -601,22 +666,112 @@ export function BookingsManagementHub() {
                       <td className="p-3.5">
                         <span
                           className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                            isConfirmed
+                            isCheckedIn
+                              ? "bg-teal-950/60 text-teal-400 border border-teal-800/60"
+                              : isInProgress
+                              ? "bg-indigo-950/60 text-indigo-400 border border-indigo-800/60"
+                              : isConfirmed
                               ? "bg-blue-950/60 text-blue-400 border border-blue-800/60"
                               : isPending
                               ? "bg-amber-950/60 text-amber-400 border border-amber-800/60"
                               : isCompleted
                               ? "bg-emerald-950/60 text-emerald-400 border border-emerald-800/60"
-                              : "bg-red-950/60 text-red-400 border border-red-800/60"
+                              : isNoShow
+                              ? "bg-rose-950/60 text-rose-400 border border-rose-800/60"
+                              : "bg-zinc-800 text-zinc-400 border border-zinc-700"
                           }`}
                         >
-                          {b.status}
+                          {b.status === "CHECKED_IN"
+                            ? "Arrived"
+                            : b.status === "IN_PROGRESS"
+                            ? "In Chair"
+                            : b.status.replace(/_/g, " ")}
                         </span>
                       </td>
 
                       {/* Actions */}
                       <td className="p-3.5 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
+                        <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                          {/* Lifecycle Contextual Quick-Action Buttons */}
+                          {isPending && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={updatingStatusId === b.id}
+                              onClick={() => handleQuickStatusUpdate(b.id, "CONFIRMED")}
+                              className="h-7 px-2 text-[11px] border-emerald-500/40 text-emerald-400 hover:bg-emerald-950/40 gap-1"
+                              title="Confirm Booking"
+                            >
+                              <CheckCircle2 className="h-3 w-3" />
+                              <span>Confirm</span>
+                            </Button>
+                          )}
+
+                          {isConfirmed && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={updatingStatusId === b.id}
+                              onClick={() => handleQuickStatusUpdate(b.id, "CHECKED_IN")}
+                              className="h-7 px-2 text-[11px] border-teal-500/40 text-teal-400 hover:bg-teal-950/40 gap-1"
+                              title="Customer Arrived / Check In at Salon"
+                            >
+                              <UserCheck className="h-3 w-3" />
+                              <span>Check-In</span>
+                            </Button>
+                          )}
+
+                          {isCheckedIn && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={updatingStatusId === b.id}
+                              onClick={() => handleQuickStatusUpdate(b.id, "IN_PROGRESS")}
+                              className="h-7 px-2 text-[11px] border-indigo-500/40 text-indigo-400 hover:bg-indigo-950/40 gap-1"
+                              title="Stylist Seat / Start Service"
+                            >
+                              <Scissors className="h-3 w-3" />
+                              <span>Start</span>
+                            </Button>
+                          )}
+
+                          {isInProgress && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={updatingStatusId === b.id}
+                              onClick={() => handleQuickStatusUpdate(b.id, "COMPLETED")}
+                              className="h-7 px-2 text-[11px] border-emerald-500/40 text-emerald-400 hover:bg-emerald-950/40 gap-1"
+                              title="Complete Visit"
+                            >
+                              <Check className="h-3 w-3" />
+                              <span>Complete</span>
+                            </Button>
+                          )}
+
+                          {(isConfirmed || isPending) && (
+                            <button
+                              disabled={updatingStatusId === b.id || !noShowEligibility.isEligible}
+                              onClick={() => {
+                                if (noShowEligibility.isEligible) {
+                                  handleQuickStatusUpdate(b.id, "NO_SHOW", "Marked as no-show by salon staff");
+                                }
+                              }}
+                              className={`p-1.5 rounded-md transition-colors ${
+                                noShowEligibility.isEligible
+                                  ? "hover:bg-rose-950/40 text-rose-400 hover:text-rose-300 cursor-pointer"
+                                  : "text-zinc-600 opacity-30 cursor-not-allowed"
+                              }`}
+                              title={
+                                noShowEligibility.isEligible
+                                  ? "Mark No-Show"
+                                  : noShowEligibility.reason || "Appointment time + 30m grace has not elapsed"
+                              }
+                            >
+                              <AlertTriangle className="h-4 w-4" />
+                            </button>
+                          )}
+
                           {/* Collect Balance Button if balance exists */}
                           {hasRemaining && (
                             <Button
@@ -834,7 +989,7 @@ export function BookingsManagementHub() {
                 <Input
                   type="date"
                   required
-                  min={new Date().toISOString().split("T")[0]}
+                  min={getKolkataDateString()}
                   value={newDate}
                   onChange={(e) => setNewDate(e.target.value)}
                   className="bg-salon-black border-zinc-800 text-white text-sm"

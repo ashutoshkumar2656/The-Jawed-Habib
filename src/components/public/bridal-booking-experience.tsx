@@ -81,7 +81,7 @@ const DEFAULT_TIME_SLOTS = [
 // Fallback curated bridal packages in case of initial offline boot
 const FALLBACK_BRIDAL_PACKAGES: BridalService[] = [
   {
-    id: "srv_bridal_1",
+    id: "cmwfznrsc00014ju3nkd2eqpu",
     name: "Jawed Habib Signature HD Bridal Makeup",
     slug: "jawed-habib-hd-bridal-makeup",
     description: "Complete signature HD bridal makeup, false lashes, premium hair styling, and dupatta draping.",
@@ -90,7 +90,7 @@ const FALLBACK_BRIDAL_PACKAGES: BridalService[] = [
     discountedPrice: 5000,
     durationMinutes: 180,
     gender: "FEMALE",
-    categoryId: "cat_6",
+    categoryId: "cmwfvl97u002et9uykk7q9z7o",
     imageUrl: "/images/services/service-bridal-makeup.jpg",
     minAdvanceAmount: 1000,
     maxAdvanceAmount: 2500,
@@ -100,7 +100,7 @@ const FALLBACK_BRIDAL_PACKAGES: BridalService[] = [
     isFeatured: true,
   },
   {
-    id: "srv_bridal_2",
+    id: "cmwfznrym00034ju39trebrqd",
     name: "Luxury Airbrush & Saree Draping Bridal Suite",
     slug: "luxury-airbrush-bridal-suite",
     description: "Water-resistant, feather-light Airbrush bridal transformation with luxury hairstyle and bridal glow.",
@@ -109,7 +109,7 @@ const FALLBACK_BRIDAL_PACKAGES: BridalService[] = [
     discountedPrice: 7500,
     durationMinutes: 210,
     gender: "FEMALE",
-    categoryId: "cat_6",
+    categoryId: "cmwfvl97u002et9uykk7q9z7o",
     imageUrl: "/images/makeup/makeup-bridal-1.jpg",
     minAdvanceAmount: 1000,
     maxAdvanceAmount: 2500,
@@ -119,7 +119,7 @@ const FALLBACK_BRIDAL_PACKAGES: BridalService[] = [
     isFeatured: true,
   },
   {
-    id: "srv_bridal_6",
+    id: "cmwfzns1c00054ju3ygv8x7t8",
     name: "Royal Rajputana Grand Bridal Suite",
     slug: "royal-rajputana-grand-bridal-suite",
     description: "Ultra-luxe high-coverage bridal artistry, 24K gold skin priming, 3D lashes, custom hair architecture, and dual-dupatta royal draping.",
@@ -128,7 +128,7 @@ const FALLBACK_BRIDAL_PACKAGES: BridalService[] = [
     discountedPrice: 9999,
     durationMinutes: 240,
     gender: "FEMALE",
-    categoryId: "cat_6",
+    categoryId: "cmwfvl97u002et9uykk7q9z7o",
     imageUrl: "/images/makeup/makeup-bridal-2.jpg",
     minAdvanceAmount: 1500,
     maxAdvanceAmount: 2500,

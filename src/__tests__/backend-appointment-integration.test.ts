@@ -250,7 +250,8 @@ describe("Backend Integration: Jawed Habib Salon Appointment & Payment Engine", 
       adminNotes: "Service rendered satisfactorily",
     });
     expect(completed.status).toBe(AppointmentStatus.COMPLETED);
-    expect(completed.paymentStatus).toBe(PaymentStatus.PAID);
+    // Verified decoupled: visit completion does not overwrite unpaid balance
+    expect(completed.paymentStatus).toBe(PaymentStatus.UNPAID);
   });
 
   // 9. WHATSAPP CLICK-TO-CHAT INTEGRATION

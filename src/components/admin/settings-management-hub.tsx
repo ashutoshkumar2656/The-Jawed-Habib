@@ -53,7 +53,7 @@ export function SettingsManagementHub() {
   const [razorpaySettings, setRazorpaySettings] = React.useState({
     environment: "TEST" as "TEST" | "LIVE",
     isEnabled: true,
-    testKeyId: "rzp_test_lalganj_mock",
+    testKeyId: "",
     testKeySecret: "••••••••••••••••",
     minAdvanceAmount: 1000,
     maxAdvanceAmount: 2500,
@@ -93,7 +93,7 @@ export function SettingsManagementHub() {
           ...prev,
           environment: rzpJson.data.environment || "TEST",
           isEnabled: rzpJson.data.isEnabled ?? true,
-          testKeyId: rzpJson.data.testKeyId || "rzp_test_lalganj_mock",
+          testKeyId: rzpJson.data.testKeyId || "",
           minAdvanceAmount: rzpJson.data.minAdvanceAmount || 1000,
           maxAdvanceAmount: rzpJson.data.maxAdvanceAmount || 2500,
           isTestVerified: rzpJson.data.isTestVerified ?? true,
