@@ -304,151 +304,6 @@ The Jawed Habib Salon – Lalganj
   return { subject, html: emailLayout(subject, contentHtml), text };
 }
 
-// ============================================================================
-// 5. ADMIN CONTACT ENQUIRY NOTIFICATION
-// ============================================================================
-export function renderAdminEnquiryNotificationEmail(
-  payload: AdminEnquiryNotificationPayload
-): { subject: string; html: string; text: string } {
-  const subject = `New Website Enquiry Received – The Jawed Habib Salon, Lalganj`;
-  const cleanPhone = payload.mobileNumber.replace(/\D/g, "");
-  const waUrl = `https://wa.me/91${cleanPhone}?text=Hello%20${encodeURIComponent(
-    payload.customerName
-  )},%20this%20is%20The%20Jawed%20Habib%20Salon,%20Lalganj.%20We%20received%20your%20inquiry%20regarding%20${encodeURIComponent(
-    payload.serviceInterest
-  )}.`;
-
-  const contentHtml = `
-    <div style="margin-bottom: 24px; text-align: center;">
-      <span style="display: inline-block; background-color: #241c10; color: #c6a56b; border: 1px solid #c6a56b; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; padding: 4px 12px; border-radius: 9999px;">
-        New Inbound Lead
-      </span>
-      <h2 style="font-family: Georgia, serif; font-size: 22px; color: #ffffff; margin: 16px 0 6px; font-weight: 700;">
-        New Website Enquiry Received
-      </h2>
-      <p style="font-size: 13px; color: #b3b3b3; margin: 0;">
-        A customer has submitted an online query through the salon contact portal.
-      </p>
-    </div>
-
-    <!-- Lead Key Highlights Card -->
-    <div style="background-color: #14120f; border: 1px solid #24201a; border-radius: 6px; padding: 20px; margin-bottom: 24px;">
-      <table style="width: 100%; border-collapse: collapse;">
-        <tr>
-          <td style="padding: 6px 0; color: #8e8e93; font-size: 12px; width: 40%;">Reference ID:</td>
-          <td style="padding: 6px 0; color: #c6a56b; font-family: monospace; font-size: 13px; font-weight: 700;">
-            ${escapeHtml(payload.enquiryNumber)}
-          </td>
-        </tr>
-        <tr>
-          <td style="padding: 6px 0; color: #8e8e93; font-size: 12px;">Customer Name:</td>
-          <td style="padding: 6px 0; color: #ffffff; font-size: 13px; font-weight: 600;">
-            ${escapeHtml(payload.customerName)}
-          </td>
-        </tr>
-        <tr>
-          <td style="padding: 6px 0; color: #8e8e93; font-size: 12px;">Mobile Phone:</td>
-          <td style="padding: 6px 0; color: #c6a56b; font-family: monospace; font-size: 13px; font-weight: 700;">
-            <a href="tel:+91${cleanPhone}" style="color: #c6a56b; text-decoration: none;">+91 ${escapeHtml(cleanPhone)}</a>
-          </td>
-        </tr>
-        ${
-          payload.email
-            ? `<tr>
-          <td style="padding: 6px 0; color: #8e8e93; font-size: 12px;">Customer Email:</td>
-          <td style="padding: 6px 0; color: #ffffff; font-size: 13px;">
-            <a href="mailto:${escapeHtml(payload.email)}" style="color: #ffffff; text-decoration: none;">${escapeHtml(payload.email)}</a>
-          </td>
-        </tr>`
-            : ""
-        }
-        <tr>
-          <td style="padding: 6px 0; color: #8e8e93; font-size: 12px;">Service Interest:</td>
-          <td style="padding: 6px 0; color: #ffffff; font-size: 13px; font-weight: 600;">
-            ${escapeHtml(payload.serviceInterest)}
-          </td>
-        </tr>
-        <tr>
-          <td style="padding: 6px 0; color: #8e8e93; font-size: 12px;">Submission Date:</td>
-          <td style="padding: 6px 0; color: #ffffff; font-size: 13px;">
-            ${escapeHtml(payload.submissionDate)} at ${escapeHtml(payload.submissionTime)} (IST)
-          </td>
-        </tr>
-        <tr>
-          <td style="padding: 6px 0; color: #8e8e93; font-size: 12px;">Lead Status:</td>
-          <td style="padding: 6px 0; color: #34d399; font-size: 12px; font-weight: 700;">
-            ${escapeHtml(payload.status)}
-          </td>
-        </tr>
-        <tr>
-          <td style="padding: 6px 0; color: #8e8e93; font-size: 12px;">Submission Source:</td>
-          <td style="padding: 6px 0; color: #9ca3af; font-size: 12px;">
-            ${escapeHtml(payload.source)}
-          </td>
-        </tr>
-      </table>
-    </div>
-
-    <!-- Complete Customer Message -->
-    <div style="background-color: #0b0b0b; border: 1px solid #c6a56b; border-radius: 6px; padding: 18px 20px; margin-bottom: 24px;">
-      <h3 style="font-size: 12px; color: #c6a56b; text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 10px; font-weight: 700;">
-        Customer Message Content
-      </h3>
-      <p style="font-size: 13px; color: #f7f4ee; line-height: 1.6; margin: 0; white-space: pre-wrap;">
-        ${escapeHtml(payload.message)}
-      </p>
-    </div>
-
-    <!-- Quick Action Buttons -->
-    <div style="text-align: center; margin: 28px 0 16px;">
-      <table style="margin: 0 auto; border-collapse: separate; border-spacing: 10px;">
-        <tr>
-          <td>
-            <a href="tel:+91${cleanPhone}" style="display: inline-block; background-color: #c6a56b; color: #0b0b0b; font-weight: 700; font-size: 12px; text-decoration: none; padding: 10px 18px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.05em;">
-              Call Customer
-            </a>
-          </td>
-          <td>
-            <a href="${waUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background-color: #064e3b; color: #34d399; border: 1px solid #059669; font-weight: 700; font-size: 12px; text-decoration: none; padding: 10px 18px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.05em;">
-              Open WhatsApp
-            </a>
-          </td>
-          <td>
-            <a href="${escapeHtml(payload.adminPortalUrl)}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background-color: #1a1a1a; color: #ffffff; border: 1px solid #333333; font-weight: 600; font-size: 12px; text-decoration: none; padding: 10px 18px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.05em;">
-              Admin Portal
-            </a>
-          </td>
-        </tr>
-      </table>
-    </div>
-  `;
-
-  const text = `New Website Enquiry Received – The Jawed Habib Salon, Lalganj
-
-Reference ID: ${payload.enquiryNumber}
-Customer Name: ${payload.customerName}
-Mobile Number: +91 ${cleanPhone}
-${payload.email ? `Customer Email: ${payload.email}\n` : ""}Service Interest: ${payload.serviceInterest}
-Submission Date: ${payload.submissionDate} at ${payload.submissionTime} (IST)
-Status: ${payload.status}
-Source: ${payload.source}
-
-Customer Message:
-"${payload.message}"
-
-Quick Contact:
-- Phone: tel:+91${cleanPhone}
-- WhatsApp: ${waUrl}
-- Admin Portal: ${payload.adminPortalUrl}
-
-The Jawed Habib Salon – Lalganj`;
-
-  return { subject, html: emailLayout(subject, contentHtml), text };
-}
-
-// ============================================================================
-// 2. PAYMENT RECEIPT EMAIL
-// ============================================================================
 
 export function renderPaymentReceiptEmail(payload: PaymentReceiptEmailPayload): {
   subject: string;
@@ -591,151 +446,6 @@ The Jawed Habib Salon – Lalganj
   return { subject, html: emailLayout(subject, contentHtml), text };
 }
 
-// ============================================================================
-// 5. ADMIN CONTACT ENQUIRY NOTIFICATION
-// ============================================================================
-export function renderAdminEnquiryNotificationEmail(
-  payload: AdminEnquiryNotificationPayload
-): { subject: string; html: string; text: string } {
-  const subject = `New Website Enquiry Received – The Jawed Habib Salon, Lalganj`;
-  const cleanPhone = payload.mobileNumber.replace(/\D/g, "");
-  const waUrl = `https://wa.me/91${cleanPhone}?text=Hello%20${encodeURIComponent(
-    payload.customerName
-  )},%20this%20is%20The%20Jawed%20Habib%20Salon,%20Lalganj.%20We%20received%20your%20inquiry%20regarding%20${encodeURIComponent(
-    payload.serviceInterest
-  )}.`;
-
-  const contentHtml = `
-    <div style="margin-bottom: 24px; text-align: center;">
-      <span style="display: inline-block; background-color: #241c10; color: #c6a56b; border: 1px solid #c6a56b; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; padding: 4px 12px; border-radius: 9999px;">
-        New Inbound Lead
-      </span>
-      <h2 style="font-family: Georgia, serif; font-size: 22px; color: #ffffff; margin: 16px 0 6px; font-weight: 700;">
-        New Website Enquiry Received
-      </h2>
-      <p style="font-size: 13px; color: #b3b3b3; margin: 0;">
-        A customer has submitted an online query through the salon contact portal.
-      </p>
-    </div>
-
-    <!-- Lead Key Highlights Card -->
-    <div style="background-color: #14120f; border: 1px solid #24201a; border-radius: 6px; padding: 20px; margin-bottom: 24px;">
-      <table style="width: 100%; border-collapse: collapse;">
-        <tr>
-          <td style="padding: 6px 0; color: #8e8e93; font-size: 12px; width: 40%;">Reference ID:</td>
-          <td style="padding: 6px 0; color: #c6a56b; font-family: monospace; font-size: 13px; font-weight: 700;">
-            ${escapeHtml(payload.enquiryNumber)}
-          </td>
-        </tr>
-        <tr>
-          <td style="padding: 6px 0; color: #8e8e93; font-size: 12px;">Customer Name:</td>
-          <td style="padding: 6px 0; color: #ffffff; font-size: 13px; font-weight: 600;">
-            ${escapeHtml(payload.customerName)}
-          </td>
-        </tr>
-        <tr>
-          <td style="padding: 6px 0; color: #8e8e93; font-size: 12px;">Mobile Phone:</td>
-          <td style="padding: 6px 0; color: #c6a56b; font-family: monospace; font-size: 13px; font-weight: 700;">
-            <a href="tel:+91${cleanPhone}" style="color: #c6a56b; text-decoration: none;">+91 ${escapeHtml(cleanPhone)}</a>
-          </td>
-        </tr>
-        ${
-          payload.email
-            ? `<tr>
-          <td style="padding: 6px 0; color: #8e8e93; font-size: 12px;">Customer Email:</td>
-          <td style="padding: 6px 0; color: #ffffff; font-size: 13px;">
-            <a href="mailto:${escapeHtml(payload.email)}" style="color: #ffffff; text-decoration: none;">${escapeHtml(payload.email)}</a>
-          </td>
-        </tr>`
-            : ""
-        }
-        <tr>
-          <td style="padding: 6px 0; color: #8e8e93; font-size: 12px;">Service Interest:</td>
-          <td style="padding: 6px 0; color: #ffffff; font-size: 13px; font-weight: 600;">
-            ${escapeHtml(payload.serviceInterest)}
-          </td>
-        </tr>
-        <tr>
-          <td style="padding: 6px 0; color: #8e8e93; font-size: 12px;">Submission Date:</td>
-          <td style="padding: 6px 0; color: #ffffff; font-size: 13px;">
-            ${escapeHtml(payload.submissionDate)} at ${escapeHtml(payload.submissionTime)} (IST)
-          </td>
-        </tr>
-        <tr>
-          <td style="padding: 6px 0; color: #8e8e93; font-size: 12px;">Lead Status:</td>
-          <td style="padding: 6px 0; color: #34d399; font-size: 12px; font-weight: 700;">
-            ${escapeHtml(payload.status)}
-          </td>
-        </tr>
-        <tr>
-          <td style="padding: 6px 0; color: #8e8e93; font-size: 12px;">Submission Source:</td>
-          <td style="padding: 6px 0; color: #9ca3af; font-size: 12px;">
-            ${escapeHtml(payload.source)}
-          </td>
-        </tr>
-      </table>
-    </div>
-
-    <!-- Complete Customer Message -->
-    <div style="background-color: #0b0b0b; border: 1px solid #c6a56b; border-radius: 6px; padding: 18px 20px; margin-bottom: 24px;">
-      <h3 style="font-size: 12px; color: #c6a56b; text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 10px; font-weight: 700;">
-        Customer Message Content
-      </h3>
-      <p style="font-size: 13px; color: #f7f4ee; line-height: 1.6; margin: 0; white-space: pre-wrap;">
-        ${escapeHtml(payload.message)}
-      </p>
-    </div>
-
-    <!-- Quick Action Buttons -->
-    <div style="text-align: center; margin: 28px 0 16px;">
-      <table style="margin: 0 auto; border-collapse: separate; border-spacing: 10px;">
-        <tr>
-          <td>
-            <a href="tel:+91${cleanPhone}" style="display: inline-block; background-color: #c6a56b; color: #0b0b0b; font-weight: 700; font-size: 12px; text-decoration: none; padding: 10px 18px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.05em;">
-              Call Customer
-            </a>
-          </td>
-          <td>
-            <a href="${waUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background-color: #064e3b; color: #34d399; border: 1px solid #059669; font-weight: 700; font-size: 12px; text-decoration: none; padding: 10px 18px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.05em;">
-              Open WhatsApp
-            </a>
-          </td>
-          <td>
-            <a href="${escapeHtml(payload.adminPortalUrl)}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background-color: #1a1a1a; color: #ffffff; border: 1px solid #333333; font-weight: 600; font-size: 12px; text-decoration: none; padding: 10px 18px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.05em;">
-              Admin Portal
-            </a>
-          </td>
-        </tr>
-      </table>
-    </div>
-  `;
-
-  const text = `New Website Enquiry Received – The Jawed Habib Salon, Lalganj
-
-Reference ID: ${payload.enquiryNumber}
-Customer Name: ${payload.customerName}
-Mobile Number: +91 ${cleanPhone}
-${payload.email ? `Customer Email: ${payload.email}\n` : ""}Service Interest: ${payload.serviceInterest}
-Submission Date: ${payload.submissionDate} at ${payload.submissionTime} (IST)
-Status: ${payload.status}
-Source: ${payload.source}
-
-Customer Message:
-"${payload.message}"
-
-Quick Contact:
-- Phone: tel:+91${cleanPhone}
-- WhatsApp: ${waUrl}
-- Admin Portal: ${payload.adminPortalUrl}
-
-The Jawed Habib Salon – Lalganj`;
-
-  return { subject, html: emailLayout(subject, contentHtml), text };
-}
-
-// ============================================================================
-// 3. APPOINTMENT REMINDER EMAIL (~1 Hour Prior)
-// ============================================================================
 
 export function renderAppointmentReminderEmail(payload: AppointmentReminderEmailPayload): {
   subject: string;
@@ -842,151 +552,6 @@ The Jawed Habib Salon – Lalganj`;
   return { subject, html: emailLayout(subject, contentHtml), text };
 }
 
-// ============================================================================
-// 5. ADMIN CONTACT ENQUIRY NOTIFICATION
-// ============================================================================
-export function renderAdminEnquiryNotificationEmail(
-  payload: AdminEnquiryNotificationPayload
-): { subject: string; html: string; text: string } {
-  const subject = `New Website Enquiry Received – The Jawed Habib Salon, Lalganj`;
-  const cleanPhone = payload.mobileNumber.replace(/\D/g, "");
-  const waUrl = `https://wa.me/91${cleanPhone}?text=Hello%20${encodeURIComponent(
-    payload.customerName
-  )},%20this%20is%20The%20Jawed%20Habib%20Salon,%20Lalganj.%20We%20received%20your%20inquiry%20regarding%20${encodeURIComponent(
-    payload.serviceInterest
-  )}.`;
-
-  const contentHtml = `
-    <div style="margin-bottom: 24px; text-align: center;">
-      <span style="display: inline-block; background-color: #241c10; color: #c6a56b; border: 1px solid #c6a56b; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; padding: 4px 12px; border-radius: 9999px;">
-        New Inbound Lead
-      </span>
-      <h2 style="font-family: Georgia, serif; font-size: 22px; color: #ffffff; margin: 16px 0 6px; font-weight: 700;">
-        New Website Enquiry Received
-      </h2>
-      <p style="font-size: 13px; color: #b3b3b3; margin: 0;">
-        A customer has submitted an online query through the salon contact portal.
-      </p>
-    </div>
-
-    <!-- Lead Key Highlights Card -->
-    <div style="background-color: #14120f; border: 1px solid #24201a; border-radius: 6px; padding: 20px; margin-bottom: 24px;">
-      <table style="width: 100%; border-collapse: collapse;">
-        <tr>
-          <td style="padding: 6px 0; color: #8e8e93; font-size: 12px; width: 40%;">Reference ID:</td>
-          <td style="padding: 6px 0; color: #c6a56b; font-family: monospace; font-size: 13px; font-weight: 700;">
-            ${escapeHtml(payload.enquiryNumber)}
-          </td>
-        </tr>
-        <tr>
-          <td style="padding: 6px 0; color: #8e8e93; font-size: 12px;">Customer Name:</td>
-          <td style="padding: 6px 0; color: #ffffff; font-size: 13px; font-weight: 600;">
-            ${escapeHtml(payload.customerName)}
-          </td>
-        </tr>
-        <tr>
-          <td style="padding: 6px 0; color: #8e8e93; font-size: 12px;">Mobile Phone:</td>
-          <td style="padding: 6px 0; color: #c6a56b; font-family: monospace; font-size: 13px; font-weight: 700;">
-            <a href="tel:+91${cleanPhone}" style="color: #c6a56b; text-decoration: none;">+91 ${escapeHtml(cleanPhone)}</a>
-          </td>
-        </tr>
-        ${
-          payload.email
-            ? `<tr>
-          <td style="padding: 6px 0; color: #8e8e93; font-size: 12px;">Customer Email:</td>
-          <td style="padding: 6px 0; color: #ffffff; font-size: 13px;">
-            <a href="mailto:${escapeHtml(payload.email)}" style="color: #ffffff; text-decoration: none;">${escapeHtml(payload.email)}</a>
-          </td>
-        </tr>`
-            : ""
-        }
-        <tr>
-          <td style="padding: 6px 0; color: #8e8e93; font-size: 12px;">Service Interest:</td>
-          <td style="padding: 6px 0; color: #ffffff; font-size: 13px; font-weight: 600;">
-            ${escapeHtml(payload.serviceInterest)}
-          </td>
-        </tr>
-        <tr>
-          <td style="padding: 6px 0; color: #8e8e93; font-size: 12px;">Submission Date:</td>
-          <td style="padding: 6px 0; color: #ffffff; font-size: 13px;">
-            ${escapeHtml(payload.submissionDate)} at ${escapeHtml(payload.submissionTime)} (IST)
-          </td>
-        </tr>
-        <tr>
-          <td style="padding: 6px 0; color: #8e8e93; font-size: 12px;">Lead Status:</td>
-          <td style="padding: 6px 0; color: #34d399; font-size: 12px; font-weight: 700;">
-            ${escapeHtml(payload.status)}
-          </td>
-        </tr>
-        <tr>
-          <td style="padding: 6px 0; color: #8e8e93; font-size: 12px;">Submission Source:</td>
-          <td style="padding: 6px 0; color: #9ca3af; font-size: 12px;">
-            ${escapeHtml(payload.source)}
-          </td>
-        </tr>
-      </table>
-    </div>
-
-    <!-- Complete Customer Message -->
-    <div style="background-color: #0b0b0b; border: 1px solid #c6a56b; border-radius: 6px; padding: 18px 20px; margin-bottom: 24px;">
-      <h3 style="font-size: 12px; color: #c6a56b; text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 10px; font-weight: 700;">
-        Customer Message Content
-      </h3>
-      <p style="font-size: 13px; color: #f7f4ee; line-height: 1.6; margin: 0; white-space: pre-wrap;">
-        ${escapeHtml(payload.message)}
-      </p>
-    </div>
-
-    <!-- Quick Action Buttons -->
-    <div style="text-align: center; margin: 28px 0 16px;">
-      <table style="margin: 0 auto; border-collapse: separate; border-spacing: 10px;">
-        <tr>
-          <td>
-            <a href="tel:+91${cleanPhone}" style="display: inline-block; background-color: #c6a56b; color: #0b0b0b; font-weight: 700; font-size: 12px; text-decoration: none; padding: 10px 18px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.05em;">
-              Call Customer
-            </a>
-          </td>
-          <td>
-            <a href="${waUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background-color: #064e3b; color: #34d399; border: 1px solid #059669; font-weight: 700; font-size: 12px; text-decoration: none; padding: 10px 18px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.05em;">
-              Open WhatsApp
-            </a>
-          </td>
-          <td>
-            <a href="${escapeHtml(payload.adminPortalUrl)}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background-color: #1a1a1a; color: #ffffff; border: 1px solid #333333; font-weight: 600; font-size: 12px; text-decoration: none; padding: 10px 18px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.05em;">
-              Admin Portal
-            </a>
-          </td>
-        </tr>
-      </table>
-    </div>
-  `;
-
-  const text = `New Website Enquiry Received – The Jawed Habib Salon, Lalganj
-
-Reference ID: ${payload.enquiryNumber}
-Customer Name: ${payload.customerName}
-Mobile Number: +91 ${cleanPhone}
-${payload.email ? `Customer Email: ${payload.email}\n` : ""}Service Interest: ${payload.serviceInterest}
-Submission Date: ${payload.submissionDate} at ${payload.submissionTime} (IST)
-Status: ${payload.status}
-Source: ${payload.source}
-
-Customer Message:
-"${payload.message}"
-
-Quick Contact:
-- Phone: tel:+91${cleanPhone}
-- WhatsApp: ${waUrl}
-- Admin Portal: ${payload.adminPortalUrl}
-
-The Jawed Habib Salon – Lalganj`;
-
-  return { subject, html: emailLayout(subject, contentHtml), text };
-}
-
-// ============================================================================
-// 4. POST-SERVICE THANK YOU EMAIL (Completed Trigger)
-// ============================================================================
 
 export function renderPostServiceThankYouEmail(payload: PostServiceThankYouEmailPayload): {
   subject: string;
@@ -1085,18 +650,26 @@ The Jawed Habib Salon – Lalganj`;
   return { subject, html: emailLayout(subject, contentHtml), text };
 }
 
-// ============================================================================
-// 5. ADMIN CONTACT ENQUIRY NOTIFICATION
+
 // ============================================================================
 export function renderAdminEnquiryNotificationEmail(
   payload: AdminEnquiryNotificationPayload
 ): { subject: string; html: string; text: string } {
   const subject = `New Website Enquiry Received – The Jawed Habib Salon, Lalganj`;
-  const cleanPhone = payload.mobileNumber.replace(/\D/g, "");
+  const rawPhone = payload.mobileNumber || (payload as any).phone || "";
+  const cleanPhone = rawPhone.replace(/\D/g, "");
+  const customerName = payload.customerName || (payload as any).name || "Valued Client";
+  const serviceInterest = payload.serviceInterest || "General Inquiry";
+  const enquiryRef = payload.enquiryNumber || payload.enquiryId || (payload as any).id || "ENQ-NEW";
+  const source = payload.source || (payload as any).type || "Website Contact Form";
+  const status = payload.status || "NEW";
+  const submissionDate = payload.submissionDate || "Today";
+  const submissionTime = payload.submissionTime || "";
+  const adminPortalUrl = payload.adminPortalUrl || "https://www.thejawedhabibsalons.in/admin/enquiries";
   const waUrl = `https://wa.me/91${cleanPhone}?text=Hello%20${encodeURIComponent(
-    payload.customerName
+    customerName
   )},%20this%20is%20The%20Jawed%20Habib%20Salon,%20Lalganj.%20We%20received%20your%20inquiry%20regarding%20${encodeURIComponent(
-    payload.serviceInterest
+    serviceInterest
   )}.`;
 
   const contentHtml = `
@@ -1118,13 +691,13 @@ export function renderAdminEnquiryNotificationEmail(
         <tr>
           <td style="padding: 6px 0; color: #8e8e93; font-size: 12px; width: 40%;">Reference ID:</td>
           <td style="padding: 6px 0; color: #c6a56b; font-family: monospace; font-size: 13px; font-weight: 700;">
-            ${escapeHtml(payload.enquiryNumber)}
+            ${escapeHtml(enquiryRef)}
           </td>
         </tr>
         <tr>
           <td style="padding: 6px 0; color: #8e8e93; font-size: 12px;">Customer Name:</td>
           <td style="padding: 6px 0; color: #ffffff; font-size: 13px; font-weight: 600;">
-            ${escapeHtml(payload.customerName)}
+            ${escapeHtml(customerName)}
           </td>
         </tr>
         <tr>
@@ -1146,25 +719,25 @@ export function renderAdminEnquiryNotificationEmail(
         <tr>
           <td style="padding: 6px 0; color: #8e8e93; font-size: 12px;">Service Interest:</td>
           <td style="padding: 6px 0; color: #ffffff; font-size: 13px; font-weight: 600;">
-            ${escapeHtml(payload.serviceInterest)}
+            ${escapeHtml(serviceInterest)}
           </td>
         </tr>
         <tr>
           <td style="padding: 6px 0; color: #8e8e93; font-size: 12px;">Submission Date:</td>
           <td style="padding: 6px 0; color: #ffffff; font-size: 13px;">
-            ${escapeHtml(payload.submissionDate)} at ${escapeHtml(payload.submissionTime)} (IST)
+            ${escapeHtml(submissionDate)} at ${escapeHtml(submissionTime)} (IST)
           </td>
         </tr>
         <tr>
           <td style="padding: 6px 0; color: #8e8e93; font-size: 12px;">Lead Status:</td>
           <td style="padding: 6px 0; color: #34d399; font-size: 12px; font-weight: 700;">
-            ${escapeHtml(payload.status)}
+            ${escapeHtml(status)}
           </td>
         </tr>
         <tr>
           <td style="padding: 6px 0; color: #8e8e93; font-size: 12px;">Submission Source:</td>
           <td style="padding: 6px 0; color: #9ca3af; font-size: 12px;">
-            ${escapeHtml(payload.source)}
+            ${escapeHtml(source)}
           </td>
         </tr>
       </table>
@@ -1195,7 +768,7 @@ export function renderAdminEnquiryNotificationEmail(
             </a>
           </td>
           <td>
-            <a href="${escapeHtml(payload.adminPortalUrl)}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background-color: #1a1a1a; color: #ffffff; border: 1px solid #333333; font-weight: 600; font-size: 12px; text-decoration: none; padding: 10px 18px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.05em;">
+            <a href="${escapeHtml(adminPortalUrl)}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background-color: #1a1a1a; color: #ffffff; border: 1px solid #333333; font-weight: 600; font-size: 12px; text-decoration: none; padding: 10px 18px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.05em;">
               Admin Portal
             </a>
           </td>

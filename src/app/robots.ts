@@ -1,7 +1,7 @@
 import { MetadataRoute } from "next";
 
 export default function robots(): MetadataRoute.Robots {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://thejawedhabib-lalganj.com";
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://www.thejawedhabibsalons.in";
 
   return {
     rules: [
@@ -15,6 +15,9 @@ export default function robots(): MetadataRoute.Robots {
           "/account",
           "/bookings",
           "/profile",
+          "/login",
+          "/register",
+          "/forgot-password",
         ],
       },
     ],

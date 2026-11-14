@@ -22,11 +22,17 @@ import {
 import { BRAND_CONFIG } from "@/lib/constants/brand";
 
 export const metadata: Metadata = {
-  title: "About Us | The Jawed Habib Salon Lalganj",
+  title: "About The Jawed Habib Salon Lalganj | Heritage, Stylists & Hygiene Standards",
   description:
-    "Discover the heritage, precision hair geometry, and uncompromising hygiene of The Jawed Habib Salon in Lalganj, Vaishali, Bihar.",
+    "Discover the heritage, precision hair geometry, certified master stylists, and uncompromising hygiene of The Jawed Habib Salon in Lalganj, Vaishali, Bihar.",
   alternates: {
     canonical: "/about",
+  },
+  openGraph: {
+    title: "About The Jawed Habib Salon Lalganj | Heritage & Master Stylists",
+    description:
+      "World-class hair artistry, sterile hygiene protocols, and certified Habib techniques at Tinpulwa Chowk, Lalganj, Bihar.",
+    url: "https://www.thejawedhabibsalons.in/about",
   },
 };
 

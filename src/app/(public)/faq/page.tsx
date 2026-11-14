@@ -9,6 +9,7 @@ import { Breadcrumbs } from "@/components/shared/breadcrumbs";
 import { HelpCircle, Phone, Calendar } from "lucide-react";
 import { BRAND_CONFIG } from "@/lib/constants/brand";
 import { cn } from "@/lib/utils/cn";
+import { getFaqPageJsonLd, JsonLdScript } from "@/components/seo/structured-data";
 
 interface DynamicFaq {
   id: string;
@@ -77,14 +78,23 @@ export default function FAQPage() {
 
         {/* 1. Header Banner */}
         <div className="text-center space-y-4">
-          <Badge variant="gold">Client Help & Guidance</Badge>
+          <Badge variant="gold">Client Help &amp; Guidance</Badge>
           <h1 className="font-serif text-3xl sm:text-5xl font-bold text-white tracking-tight">
-            Frequently Asked Questions
+            Frequently Asked Questions | Salon &amp; Bridal Guide Lalganj
           </h1>
           <p className="text-sm sm:text-base text-zinc-300 leading-relaxed font-light max-w-2xl mx-auto">
-            Everything you need to know about visiting The Jawed Habib Salon in Lalganj, Vaishali.
+            Everything you need to know about visiting The Jawed Habib Salon at 1st Floor, Tinpulwa Chowk, Lalganj, Vaishali.
           </p>
         </div>
+
+        {/* Structured Data FAQPage */}
+        {filteredFaqs.length > 0 && (
+          <JsonLdScript
+            data={getFaqPageJsonLd(
+              filteredFaqs.map((f) => ({ question: f.question, answer: f.answer }))
+            )}
+          />
+        )}
 
         {/* 2. Category Filter Tabs if multiple exist */}
         {categories.length > 1 && (

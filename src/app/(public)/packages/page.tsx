@@ -74,14 +74,20 @@ export default function PackagesPage() {
         <div className="text-center max-w-3xl mx-auto space-y-4">
           <Badge variant="gold">Curated Bundles</Badge>
           <h1 className="font-serif text-3xl sm:text-5xl font-bold text-white tracking-tight">
-            Curated Packages & Bundles
+            Curated Salon Packages &amp; Bridal Bundles in Lalganj, Vaishali
           </h1>
           <p className="text-sm sm:text-base text-zinc-300 leading-relaxed font-light">
             Enjoy comprehensive head-to-toe beauty rituals, restorative hair therapies, and executive grooming bundles crafted for maximum relaxation and savings.
           </p>
         </div>
 
-        {/* 2. Packages Grid */}
+        {/* 2. Packages Grid Header & Cards */}
+        <div className="border-b border-zinc-800 pb-3">
+          <h2 className="font-serif text-2xl font-bold text-white tracking-tight">
+            Exclusive Beauty, Hair Spa &amp; Grooming Bundles
+          </h2>
+        </div>
+
         {isLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {[1, 2, 3].map((i) => (

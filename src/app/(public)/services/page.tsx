@@ -150,7 +150,7 @@ export default function ServicesPage() {
         <div className="text-center max-w-3xl mx-auto space-y-4">
           <Badge variant="gold">Comprehensive Menu</Badge>
           <h1 className="font-serif text-3xl sm:text-5xl font-bold text-white tracking-tight">
-            Hair, Beauty & Royal Grooming Services
+            Hair, Beauty &amp; Royal Grooming Services in Lalganj, Vaishali
           </h1>
           <p className="text-sm sm:text-base text-zinc-300 leading-relaxed font-light">
             Every service at The Jawed Habib Salon Lalganj is executed with single-use sterile consumables and authentic salon formulations.
@@ -216,7 +216,16 @@ export default function ServicesPage() {
           </div>
         </div>
 
-        {/* 3. Services Grid */}
+        {/* 3. Services Grid Header & Cards */}
+        <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+          <h2 className="font-serif text-2xl font-bold text-white tracking-tight">
+            Certified Stylist Services &amp; Treatments Menu
+          </h2>
+          <span className="text-xs text-zinc-400">
+            {filteredServices.length} {filteredServices.length === 1 ? "Service" : "Services"} Available
+          </span>
+        </div>
+
         {isLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[1, 2, 3, 4, 5, 6].map((i) => (
@@ -277,7 +286,7 @@ export default function ServicesPage() {
                     <div className="relative aspect-[16/10] overflow-hidden bg-zinc-900">
                       <Image
                         src={displayImage}
-                        alt={service.name}
+                        alt={`${service.name} at The Jawed Habib Salon Lalganj`}
                         fill
                         sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
                         className="object-cover group-hover:scale-105 transition-transform duration-500"

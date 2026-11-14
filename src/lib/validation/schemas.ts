@@ -215,7 +215,7 @@ export const enquirySchema = z.object({
   source: z.string().optional().default("Website Contact Form"),
   message: z.string().min(3, "Please provide a brief message (min 3 characters)").max(2000),
   // Anti-spam honeypot field (should remain empty)
-  _honey: z.string().max(0, "Spam detected").optional(),
+  _honey: z.string().optional(),
 });
 
 // -------------------------------------------------------------

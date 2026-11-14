@@ -68,13 +68,23 @@ export function Footer() {
             </h4>
             <ul className="space-y-2.5 text-sm">
               <li>
+                <Link href="/bridal" className="hover:text-salon-gold transition-colors font-medium text-salon-goldLight">
+                  Bridal Suites &amp; Wedding Makeup
+                </Link>
+              </li>
+              <li>
                 <Link href="/services" className="hover:text-salon-gold transition-colors">
                   Service Menu &amp; Categories
                 </Link>
               </li>
               <li>
+                <Link href="/packages" className="hover:text-salon-gold transition-colors">
+                  Curated Packages &amp; Bundles
+                </Link>
+              </li>
+              <li>
                 <Link href="/pricing" className="hover:text-salon-gold transition-colors">
-                  Transparent Pricing &amp; Packages
+                  Transparent Pricing &amp; Rates
                 </Link>
               </li>
               <li>
@@ -85,6 +95,11 @@ export function Footer() {
               <li>
                 <Link href="/gallery" className="hover:text-salon-gold transition-colors">
                   Salon Ambience &amp; Stations
+                </Link>
+              </li>
+              <li>
+                <Link href="/reviews" className="hover:text-salon-gold transition-colors">
+                  Customer Reviews &amp; Testimonials
                 </Link>
               </li>
               <li>

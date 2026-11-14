@@ -1,27 +1,34 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { BRAND_CONFIG } from "@/lib/constants/brand";
+import { getLocalBusinessJsonLd, getWebsiteJsonLd, JsonLdScript } from "@/components/seo/structured-data";
+
+const CANONICAL_BASE = "https://www.thejawedhabibsalons.in";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || CANONICAL_BASE),
   title: {
-    default: `${BRAND_CONFIG.fullName} | Luxury Hair, Beauty & Grooming`,
+    default: `${BRAND_CONFIG.fullName} | Luxury Hair, Beauty & Bridal Salon Lalganj`,
     template: `%s | ${BRAND_CONFIG.name} Lalganj`,
   },
   description:
-    "Experience world-class hair styling, restorative hair spa, royal beard grooming, and luminous bridal/skin care at The Jawed Habib Salon in Lalganj, Vaishali, Bihar.",
+    "Experience world-class precision hair styling, restorative hair spa, keratin smoothening, royal beard grooming, and luxury bridal suites at The Jawed Habib Salon in Lalganj, Vaishali, Bihar.",
   keywords: [
     "Jawed Habib Lalganj",
+    "The Jawed Habib Salon Lalganj",
     "Salon in Lalganj",
-    "Best haircut in Lalganj Bihar",
-    "Bridal makeup Lalganj Vaishali",
-    "Hair spa Lalganj",
+    "Best salon in Lalganj",
+    "Hair salon in Lalganj",
+    "Beauty parlour in Lalganj",
+    "Bridal makeup in Lalganj",
+    "Hair spa in Lalganj",
+    "Keratin treatment Lalganj",
     "Men grooming salon Lalganj",
-    "Beauty parlour Lalganj",
     "Jawed Habib Tinpulwa Chowk",
+    "Jawed Habib Salon Vaishali",
   ],
   authors: [{ name: "The Jawed Habib Salon Lalganj" }],
   creator: "The Jawed Habib Salon Lalganj",
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"),
   alternates: {
     canonical: "/",
   },
@@ -38,14 +45,14 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     locale: "en_IN",
-    url: "/",
+    url: CANONICAL_BASE,
     title: `${BRAND_CONFIG.fullName} – Premier Salon in Lalganj, Bihar`,
     description:
-      "Premier hair artistry, restorative hair spa, royal beard grooming, and luminous bridal packages in Lalganj, Vaishali.",
+      "Premier hair artistry, restorative hair spa, royal beard grooming, and luminous bridal suites in Lalganj, Vaishali.",
     siteName: BRAND_CONFIG.fullName,
     images: [
       {
-        url: "/brand/jawed-habib/brand-preview.webp",
+        url: `${CANONICAL_BASE}/brand/jawed-habib/brand-preview.webp`,
         width: 1200,
         height: 630,
         alt: `${BRAND_CONFIG.fullName} – Official Branding & Luxury Salon`,
@@ -57,54 +64,11 @@ export const metadata: Metadata = {
     title: `${BRAND_CONFIG.fullName} | Lalganj, Bihar`,
     description:
       "Premier destination for precision hair styling, bridal makeup, beard architecture, and skin treatments in Lalganj.",
-    images: ["/brand/jawed-habib/brand-preview.webp"],
+    images: [`${CANONICAL_BASE}/brand/jawed-habib/brand-preview.webp`],
   },
-};
-
-const localBusinessJsonLd = {
-  "@context": "https://schema.org",
-  "@type": ["HairSalon", "BeautySalon", "HealthAndBeautyBusiness"],
-  "@id": "https://thejawedhabib-lalganj.com/#salon",
-  "name": BRAND_CONFIG.fullName,
-  "alternateName": BRAND_CONFIG.name,
-  "url": process.env.NEXT_PUBLIC_APP_URL || "https://thejawedhabib-lalganj.com",
-  "logo": "https://thejawedhabib-lalganj.com/brand/jawed-habib/logo-primary.png",
-  "telephone": `+91${BRAND_CONFIG.contact.primaryPhone}`,
-  "priceRange": "₹₹",
-  "image": "/images/hero/hero-salon-main.jpg",
-  "address": {
-    "@type": "PostalAddress",
-    "streetAddress": `${BRAND_CONFIG.location.addressLine1}, ${BRAND_CONFIG.location.landmark}`,
-    "addressLocality": BRAND_CONFIG.location.city,
-    "addressRegion": BRAND_CONFIG.location.state,
-    "postalCode": BRAND_CONFIG.location.pinCode,
-    "addressCountry": "IN"
+  verification: {
+    google: "google-site-verification-placeholder",
   },
-  "geo": {
-    "@type": "GeoCoordinates",
-    "latitude": "25.8677",
-    "longitude": "85.1802"
-  },
-  "openingHoursSpecification": [
-    {
-      "@type": "OpeningHoursSpecification",
-      "dayOfWeek": [
-        "Monday",
-        "Tuesday",
-        "Wednesday",
-        "Thursday",
-        "Friday",
-        "Saturday",
-        "Sunday"
-      ],
-      "opens": "10:00",
-      "closes": "22:00"
-    }
-  ],
-  "sameAs": [
-    BRAND_CONFIG.contact.instagramUrl,
-    BRAND_CONFIG.location.googleMapsUrl
-  ]
 };
 
 export default function RootLayout({
@@ -112,6 +76,9 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const localBusinessData = getLocalBusinessJsonLd();
+  const websiteData = getWebsiteJsonLd();
+
   return (
     <html lang="en" className="dark">
       <head>
@@ -122,10 +89,8 @@ export default function RootLayout({
           href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;0,900;1,400&display=swap"
           rel="stylesheet"
         />
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(localBusinessJsonLd) }}
-        />
+        <JsonLdScript data={localBusinessData} />
+        <JsonLdScript data={websiteData} />
       </head>
       <body className="min-h-screen bg-salon-black text-salon-ivory flex flex-col font-sans antialiased">
         {children}

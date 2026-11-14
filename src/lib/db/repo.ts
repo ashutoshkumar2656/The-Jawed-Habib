@@ -4489,6 +4489,7 @@ export const dbRepo = {
     source?: string;
     message: string;
     enquiryNumber?: string;
+    status?: any;
     emailStatus?: string;
     googleSheetsStatus?: string;
   }) {
@@ -4496,6 +4497,7 @@ export const dbRepo = {
     const seq4 = String((memoryDb.enquiries.length + 1) % 10000).padStart(4, "0");
     const enquiryNumber = data.enquiryNumber || `ENQ-${dateCompact}-${seq4}`;
     const source = data.source || "Website Contact Form";
+    const status = (data.status as EnquiryStatus) || EnquiryStatus.NEW;
     const emailStatus = data.emailStatus || "PENDING";
     const googleSheetsStatus = data.googleSheetsStatus || "PENDING";
 
@@ -4511,7 +4513,7 @@ export const dbRepo = {
             type: data.type || "GENERAL",
             source,
             message: data.message,
-            status: EnquiryStatus.NEW,
+            status,
             emailStatus,
             googleSheetsStatus,
           },
@@ -4528,7 +4530,7 @@ export const dbRepo = {
               serviceInterest: data.serviceInterest || null,
               type: data.type || "GENERAL",
               message: data.message,
-              status: EnquiryStatus.NEW,
+              status,
             },
           });
           return {
@@ -4554,7 +4556,7 @@ export const dbRepo = {
       type: data.type || "GENERAL",
       source,
       message: data.message,
-      status: EnquiryStatus.NEW,
+      status,
       emailStatus,
       googleSheetsStatus,
       createdAt: new Date(),

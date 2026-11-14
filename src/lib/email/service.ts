@@ -13,6 +13,7 @@ import {
   renderPaymentReceiptEmail,
   renderAppointmentReminderEmail,
   renderPostServiceThankYouEmail,
+  renderAdminEnquiryNotificationEmail,
 } from "./templates";
 import { generateReceiptPdfBuffer } from "../pdf/receipt";
 import type {
@@ -609,6 +610,71 @@ export class EmailNotificationService {
       }
     } catch (err: any) {
       return { success: false, error: err.message };
+    }
+  }
+
+  // ==========================================================================
+  // 7. ADMIN CONTACT ENQUIRY NOTIFICATION
+  // ==========================================================================
+  async sendAdminEnquiryNotification(enquiry: any): Promise<EmailSendResult> {
+    try {
+      if (!enquiry) {
+        return { success: false, error: "Enquiry data is missing" };
+      }
+
+      const adminRecipient =
+        process.env.CONTACT_NOTIFICATION_EMAIL?.trim() ||
+        process.env.ADMIN_EMAIL?.trim() ||
+        BRAND_CONFIG.contact.email ||
+        "support@thejawedhabibsalons.in";
+
+      const createdAt = enquiry.createdAt ? new Date(enquiry.createdAt) : new Date();
+      const submissionDate = new Intl.DateTimeFormat("en-IN", {
+        timeZone: "Asia/Kolkata",
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      }).format(createdAt);
+
+      const submissionTime = new Intl.DateTimeFormat("en-IN", {
+        timeZone: "Asia/Kolkata",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      }).format(createdAt);
+
+      const appUrl =
+        process.env.NEXT_PUBLIC_APP_URL ||
+        process.env.APP_URL ||
+        "https://www.thejawedhabibsalons.in";
+
+      const { subject, html, text } = renderAdminEnquiryNotificationEmail({
+        enquiryId: enquiry.id,
+        enquiryNumber: enquiry.enquiryNumber || enquiry.id,
+        customerName: enquiry.name,
+        mobileNumber: enquiry.phone,
+        email: enquiry.email || null,
+        serviceInterest: enquiry.serviceInterest || "General Inquiry",
+        message: enquiry.message,
+        submissionDate,
+        submissionTime,
+        status: enquiry.status || "NEW",
+        source: enquiry.source || enquiry.type || "Website Contact Form",
+        adminPortalUrl: `${appUrl}/admin/enquiries`,
+        salonPhone: BRAND_CONFIG.contact.phones[0] || "7707000463",
+      });
+
+      const res = await resendClient.send({
+        to: adminRecipient,
+        subject,
+        html,
+        text,
+      });
+
+      return res;
+    } catch (err: any) {
+      console.error("[ENQUIRY_EMAIL_NOTIFICATION_FAILED]:", err.message || err);
+      return { success: false, error: err.message || "Failed to dispatch enquiry notification" };
     }
   }
 }

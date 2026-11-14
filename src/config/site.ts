@@ -5,8 +5,8 @@ export const siteConfig = {
   shortName: BRAND_CONFIG.name,
   description:
     "The Jawed Habib Salon in Lalganj, Vaishali, Bihar. Premier destination for haircut, hair spa, bridal makeover, beard styling, and luxury skin care treatments.",
-  url: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
-  ogImage: "/images/hero/hero-salon-main.jpg",
+  url: process.env.NEXT_PUBLIC_APP_URL || "https://www.thejawedhabibsalons.in",
+  ogImage: "https://www.thejawedhabibsalons.in/brand/jawed-habib/brand-preview.webp",
   links: {
     instagram: BRAND_CONFIG.contact.instagramUrl,
     maps: BRAND_CONFIG.location.googleMapsUrl,
@@ -15,15 +15,16 @@ export const siteConfig = {
   },
   mainNav: [
     { title: "Home", href: "/" },
-    { title: "Bridal Services", href: "/#packages" },
+    { title: "Bridal", href: "/bridal" },
     { title: "Services", href: "/#services" },
+    { title: "Packages", href: "/#packages" },
     { title: "Gallery", href: "/#gallery" },
     { title: "Reviews", href: "/#reviews" },
     { title: "Contact", href: "/#contact" },
   ],
   secondaryNav: [
     { title: "Pricing", href: "/pricing" },
-    { title: "Packages", href: "/packages" },
+    { title: "Offers", href: "/offers" },
     { title: "Stylists", href: "/team" },
     { title: "Consultation", href: "/consultation" },
     { title: "FAQ", href: "/faq" },

@@ -27,6 +27,8 @@ export default function ContactPage() {
   const [phone, setPhone] = React.useState("");
   const [service, setService] = React.useState("Haircut & Styling");
   const [message, setMessage] = React.useState("");
+  const [honey, setHoney] = React.useState("");
+  const [referenceId, setReferenceId] = React.useState<string | null>(null);
   const [submitted, setSubmitted] = React.useState(false);
 
   const [isSubmitting, setIsSubmitting] = React.useState(false);
@@ -58,11 +60,13 @@ export default function ContactPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name,
+          name: name.trim(),
           phone: cleanPhone,
           serviceInterest: service,
           type: "GENERAL",
-          message: message || "Enquiry from Lalganj contact page.",
+          source: "Website Contact Form",
+          message: message.trim() || "Enquiry from Lalganj contact page.",
+          _honey: honey,
         }),
       });
 
@@ -76,6 +80,7 @@ export default function ContactPage() {
         return;
       }
 
+      setReferenceId(data.data?.enquiryNumber || data.data?.id || null);
       setSubmitted(true);
       toast({
         type: "success",
@@ -103,7 +108,7 @@ export default function ContactPage() {
         <div className="text-center max-w-3xl mx-auto space-y-4">
           <Badge variant="gold">Direct Salon Concierge</Badge>
           <h1 className="font-serif text-3xl sm:text-5xl font-bold text-white tracking-tight">
-            Connect With The Lalganj Salon
+            Contact The Jawed Habib Salon in Lalganj, Vaishali
           </h1>
           <p className="text-sm sm:text-base text-zinc-300 leading-relaxed font-light">
             Located conveniently on Tinpulwa Chowk above Killer Showroom. Walk in, call our desk, or submit your enquiry below.
@@ -115,9 +120,9 @@ export default function ContactPage() {
           {/* Left Column: Salon Facts, Coordinates, Hours */}
           <div className="space-y-6">
             <div className="luxury-card rounded-2xl border border-zinc-800 bg-zinc-950/80 p-8 space-y-6">
-              <h3 className="font-serif text-xl font-bold text-white border-b border-zinc-800 pb-3">
-                Lalganj Branch Details
-              </h3>
+              <h2 className="font-serif text-xl font-bold text-white border-b border-zinc-800 pb-3">
+                Lalganj Branch Address &amp; Operating Hours
+              </h2>
 
               <div className="space-y-5 text-xs sm:text-sm">
                 <div className="flex items-start space-x-4">
@@ -201,9 +206,9 @@ export default function ContactPage() {
           {/* Right Column: Contact Inquiry Form */}
           <div className="luxury-card rounded-2xl border border-zinc-800 bg-zinc-950/80 p-8 space-y-6">
             <div className="border-b border-zinc-800 pb-3">
-              <h3 className="font-serif text-xl font-bold text-white">
-                Send an Online Inquiry
-              </h3>
+              <h2 className="font-serif text-xl font-bold text-white">
+                Send an Online Inquiry to Front Desk
+              </h2>
               <p className="text-xs text-zinc-400 mt-1">
                 Have a question regarding bridal bookings, pricing, or custom packages?
               </p>
@@ -217,6 +222,11 @@ export default function ContactPage() {
                 <h4 className="font-serif text-xl font-bold text-white">
                   Message Sent Successfully!
                 </h4>
+                {referenceId && (
+                  <div className="inline-block px-3 py-1 rounded bg-zinc-900 border border-salon-gold/40 text-[11px] font-mono text-salon-gold">
+                    Enquiry Ref: {referenceId}
+                  </div>
+                )}
                 <p className="text-xs text-zinc-300 max-w-sm mx-auto leading-relaxed">
                   Thank you, <span className="text-white font-semibold">{name}</span>. Our salon manager will get in touch with you shortly at{" "}
                   <span className="text-salon-gold font-semibold">{phone}</span>.
@@ -224,7 +234,11 @@ export default function ContactPage() {
                 <Button
                   variant="goldOutline"
                   size="sm"
-                  onClick={() => setSubmitted(false)}
+                  onClick={() => {
+                    setSubmitted(false);
+                    setMessage("");
+                    setReferenceId(null);
+                  }}
                   className="mt-4 text-xs"
                 >
                   Send Another Inquiry
@@ -232,6 +246,16 @@ export default function ContactPage() {
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="space-y-4">
+                {/* Anti-spam honeypot */}
+                <input
+                  type="text"
+                  name="_honey"
+                  value={honey}
+                  onChange={(e) => setHoney(e.target.value)}
+                  style={{ display: "none" }}
+                  tabIndex={-1}
+                  autoComplete="off"
+                />
                 <div className="space-y-1.5">
                   <label className="text-xs uppercase font-bold tracking-wider text-zinc-300">
                     Your Full Name *
@@ -303,10 +327,10 @@ export default function ContactPage() {
         {/* 3. Interactive Embedded Map Preview */}
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="font-serif text-xl font-bold text-white flex items-center gap-2">
+            <h2 className="font-serif text-xl font-bold text-white flex items-center gap-2">
               <MapPin className="h-5 w-5 text-salon-gold" />
               <span>Location on Map</span>
-            </h3>
+            </h2>
             <a
               href={BRAND_CONFIG.location.googleMapsUrl}
               target="_blank"
@@ -336,9 +360,9 @@ export default function ContactPage() {
         <div className="luxury-card rounded-2xl border border-zinc-800 bg-zinc-950/70 p-8 space-y-4">
           <div className="flex items-center gap-2 border-b border-zinc-800 pb-3">
             <Clock className="h-4 w-4 text-salon-gold" />
-            <h3 className="font-serif text-lg font-bold text-white">
-              Visiting Guidelines & Operating Schedule
-            </h3>
+            <h2 className="font-serif text-lg font-bold text-white">
+              Visiting Guidelines &amp; Operating Schedule
+            </h2>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs text-zinc-300">
             <div className="space-y-1.5 p-4 rounded-xl bg-zinc-900/50 border border-zinc-800">

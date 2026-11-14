@@ -4,8 +4,30 @@ import dbRepo from "@/lib/db/repo";
 import { adminEnquiryUpdateSchema } from "@/lib/validation/schemas";
 
 export const runtime = "nodejs";
-
 export const dynamic = "force-dynamic";
+
+export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+  try {
+    const auth = checkAdminAuth(req);
+    if (!auth.authorized) {
+      return NextResponse.json({ success: false, error: auth.error }, { status: auth.status });
+    }
+
+    const { id } = params;
+    const enquiry = await dbRepo.getEnquiryById(id);
+    if (!enquiry) {
+      return NextResponse.json({ success: false, error: "Enquiry not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true, data: enquiry });
+  } catch (error: any) {
+    console.error("Admin enquiry GET error:", error);
+    return NextResponse.json(
+      { success: false, error: error.message || "Failed to fetch enquiry" },
+      { status: 500 }
+    );
+  }
+}
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -25,6 +47,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({ success: true, data: updated });
   } catch (error: any) {
     console.error("Admin enquiry PATCH error:", error);
-    return NextResponse.json({ success: false, error: error.message || "Failed to update enquiry" }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: error.message || "Failed to update enquiry" },
+      { status: 500 }
+    );
   }
 }

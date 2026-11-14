@@ -49,6 +49,7 @@ import { BrandMarquee } from "@/components/public/brand-marquee";
 import { AccordionItem } from "@/components/ui/accordion";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils/cn";
+import { getFaqPageJsonLd, JsonLdScript } from "@/components/seo/structured-data";
 
 // Dynamic imports for heavy below-the-fold & modal components to reduce initial bundle
 const BeforeAfterSlider = dynamic(
@@ -367,9 +368,9 @@ export default function HomePage() {
       <HeroVideoSection
         onBookClick={() => scrollToSection("availability")}
         onExploreClick={() => scrollToSection("packages")}
-        headline={cms.hero_headline || "Be the bride everyone can't stop looking at."}
-        badgeText={cms.hero_eyebrow || "HIGH DEMAND • 2026/2027 WEDDING SEASON RESERVATIONS OPEN"}
-        subtitle={cms.hero_subtitle || "Flawless HD bridal artistry, floral hair architecture, and couture styling exclusively at The Jawed Habib Salon – Lalganj."}
+        headline={cms.hero_headline || "The Jawed Habib Salon in Lalganj | Precision Hair, Beauty & Bridal Artistry"}
+        badgeText={cms.hero_eyebrow || "PREMIER SALON • 1ST FLOOR TINPULWA CHOWK, LALGANJ, BIHAR"}
+        subtitle={cms.hero_subtitle || "Certified master haircuts, restorative L'Oréal hair spa, keratin smoothening, luxury grooming, and bespoke bridal makeover suites at 1st Floor, Tinpulwa Chowk, Lalganj, Vaishali."}
         videoUrl={cms.hero_video_url}
         posterUrl={cms.hero_poster_image}
         primaryCtaText={cms.hero_primary_cta}
@@ -570,7 +571,7 @@ export default function HomePage() {
             Verified Feedback
           </p>
           <h2 className="font-serif text-3xl font-bold tracking-tight text-white sm:text-4xl md:text-5xl">
-            Trusted by brides everywhere.
+            Trusted by Brides &amp; Clients in Lalganj, Vaishali
           </h2>
           <p className="text-sm leading-relaxed text-zinc-300 md:text-base">
             Genuine ratings and reviews from brides and clients in Lalganj, Vaishali, and Bihar.
@@ -828,12 +829,20 @@ export default function HomePage() {
             FAQ
           </p>
           <h2 className="font-serif text-3xl font-bold tracking-tight text-white sm:text-4xl md:text-5xl">
-            Frequently Asked Questions.
+            Frequently Asked Questions | Salon &amp; Bridal Guide
           </h2>
           <p className="text-sm leading-relaxed text-zinc-300 md:text-base">
-            Everything you need to know before securing your bridal date and package deposit.
+            Everything you need to know before securing your bridal date and package deposit in Lalganj, Vaishali.
           </p>
         </div>
+
+        {salonFaqs.length > 0 && (
+          <JsonLdScript
+            data={getFaqPageJsonLd(
+              salonFaqs.map((f) => ({ question: f.q, answer: f.a }))
+            )}
+          />
+        )}
 
         <div className="max-w-3xl mx-auto space-y-3">
           {salonFaqs.map((faq, idx) => (
@@ -860,7 +869,7 @@ export default function HomePage() {
             Visit Lalganj Studio
           </p>
           <h2 className="font-serif text-3xl font-bold tracking-tight text-white sm:text-4xl md:text-5xl">
-            Find the studio.
+            Visit Our Salon at Tinpulwa Chowk, Lalganj
           </h2>
           <p className="text-sm leading-relaxed text-zinc-300 md:text-base">
             Conveniently situated on 1st Floor, Tinpulwa Chowk, Lalganj, Bihar with dedicated support.

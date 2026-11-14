@@ -151,16 +151,25 @@ describe("Customer Management & Booking Lifecycle Automated Verification", () =>
       const services = await dbRepo.getServices();
       const validServiceId = services[0]?.id || "srv_1";
 
-      const todayStr = new Date().toISOString().split("T")[0];
-      const availability = await dbRepo.getAvailableSlots(todayStr, [validServiceId]);
-      const futureSlot = availability.slots.reverse().find((s) => s.isAvailable);
-      const chosenTime = futureSlot ? futureSlot.time : "18:00";
+      let targetDate = new Date().toISOString().split("T")[0];
+      let availability = await dbRepo.getAvailableSlots(targetDate, [validServiceId]);
+      let futureSlot = availability.slots.find((s) => s.isAvailable);
+
+      if (!futureSlot) {
+        // If today has no remaining slots left, test with tomorrow's scheduled slot
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        targetDate = tomorrow.toISOString().split("T")[0];
+        availability = await dbRepo.getAvailableSlots(targetDate, [validServiceId]);
+        futureSlot = availability.slots.find((s) => s.isAvailable);
+      }
+      const chosenTime = futureSlot ? futureSlot.time : "11:00";
 
       const apt = await dbRepo.createAppointment({
         customerName: "Vikram Malhotra",
         customerPhone: "9855566677",
         serviceIds: [validServiceId],
-        appointmentDate: todayStr,
+        appointmentDate: targetDate,
         startTime: chosenTime,
       });
 
@@ -168,7 +177,7 @@ describe("Customer Management & Booking Lifecycle Automated Verification", () =>
         dbRepo.updateAppointmentStatus(apt.id, {
           status: AppointmentStatus.NO_SHOW,
         })
-      ).rejects.toThrow(/Cannot mark appointment as NO_SHOW until the scheduled time/i);
+      ).rejects.toThrow(/(Cannot mark appointment as NO_SHOW|Cannot mark a future appointment)/i);
     });
 
     it("should allow marking past appointments as NO_SHOW", async () => {
