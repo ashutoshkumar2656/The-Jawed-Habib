@@ -184,21 +184,33 @@ export function BookingsManagementHub() {
     }
   };
 
-  // Fetch Bookings with caching and debounced parameters
+  // Fetch Bookings with debounced parameters and request cancellation
+  const abortControllerRef = React.useRef<AbortController | null>(null);
+
   const fetchBookings = React.useCallback(async () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
       setLoading(true);
       const params = new URLSearchParams();
       if (search.trim()) params.append("search", search.trim());
       if (dateFilter) params.append("date", dateFilter);
 
-      const res = await fetch(`/api/admin/appointments?${params.toString()}`);
+      const res = await fetch(`/api/admin/appointments?${params.toString()}`, {
+        signal: controller.signal,
+      });
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
         setBookings(json.data);
       }
-    } catch (e) {
-      console.error("Failed to fetch bookings:", e);
+    } catch (e: any) {
+      if (e.name !== "AbortError") {
+        console.error("Failed to fetch bookings:", e);
+      }
     } finally {
       setLoading(false);
     }

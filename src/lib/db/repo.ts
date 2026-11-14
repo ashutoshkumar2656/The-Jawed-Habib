@@ -2321,6 +2321,17 @@ const memoryDb: MemoryDatabase = globalForMemoryDb.__memoryDb;
 // REPOSITORY IMPLEMENTATION WITH PRISMA & MEMORY RESILIENCE
 // -------------------------------------------------------------
 export const dbRepo = {
+  _lastExpiryRun: 0,
+
+  async autoExpireStaleReservations(timeoutMinutes: number = 60) {
+    const now = Date.now();
+    // Throttle to at most once every 30 seconds to prevent redundant DB sweeps during rapid/concurrent availability queries
+    if (now - this._lastExpiryRun < 30_000) {
+      return { dbCount: 0, memCount: 0 };
+    }
+    this._lastExpiryRun = now;
+    return await this.expireAbandonedOnlineReservations(timeoutMinutes);
+  },
   // -----------------------------------------------------------
   // AUTHENTICATION & USERS
   // -----------------------------------------------------------
@@ -2984,6 +2995,8 @@ export const dbRepo = {
   // -----------------------------------------------------------
   async getAvailableSlots(dateStr: string, serviceIds: string[], preferredStaffId?: string | null, allowPastDate: boolean = false) {
     this.cleanupExpiredHolds();
+    // Phase 3: Safe on-demand expiry of abandoned online checkout reservations older than 60 minutes
+    await this.autoExpireStaleReservations(60);
     const settings = await this.getCalendarSettings();
 
     const services = await Promise.all(serviceIds.map((id) => this.getServiceById(id)));
@@ -3127,7 +3140,14 @@ export const dbRepo = {
         const dbApts = await prisma.appointment.findMany({
           where: {
             appointmentDate: new Date(dateStr),
-            status: { in: [AppointmentStatus.PENDING, AppointmentStatus.CONFIRMED] },
+            status: {
+              in: [
+                AppointmentStatus.PENDING,
+                AppointmentStatus.CONFIRMED,
+                AppointmentStatus.CHECKED_IN,
+                AppointmentStatus.IN_PROGRESS,
+              ],
+            },
           },
           select: { startTime: true, endTime: true, staffId: true, status: true },
         });
@@ -3142,7 +3162,12 @@ export const dbRepo = {
         .filter(
           (a) =>
             a.appointmentDate === dateStr &&
-            (a.status === AppointmentStatus.PENDING || a.status === AppointmentStatus.CONFIRMED)
+            (
+              a.status === AppointmentStatus.PENDING ||
+              a.status === AppointmentStatus.CONFIRMED ||
+              a.status === AppointmentStatus.CHECKED_IN ||
+              a.status === AppointmentStatus.IN_PROGRESS
+            )
         )
         .map((a) => ({
           startTime: a.startTime,
@@ -3708,7 +3733,14 @@ export const dbRepo = {
               where: {
                 appointmentDate: new Date(data.appointmentDate),
                 staffId: data.staffId,
-                status: { in: [AppointmentStatus.PENDING, AppointmentStatus.CONFIRMED] },
+                status: {
+                  in: [
+                    AppointmentStatus.PENDING,
+                    AppointmentStatus.CONFIRMED,
+                    AppointmentStatus.CHECKED_IN,
+                    AppointmentStatus.IN_PROGRESS,
+                  ],
+                },
                 AND: [{ startTime: { lt: endTime } }, { endTime: { gt: data.startTime } }],
               },
             });
@@ -6151,6 +6183,43 @@ export const dbRepo = {
           };
         }
 
+        const isCancelled = apt.status === AppointmentStatus.CANCELLED;
+        let isSlotConflict = false;
+
+        if (isCancelled) {
+          const conflicting = await prisma.appointment.findFirst({
+            where: {
+              id: { not: data.appointmentId },
+              appointmentDate: new Date(apt.appointmentDate),
+              status: {
+                in: [
+                  AppointmentStatus.PENDING,
+                  AppointmentStatus.CONFIRMED,
+                  AppointmentStatus.CHECKED_IN,
+                  AppointmentStatus.IN_PROGRESS,
+                ],
+              },
+              AND: [
+                { startTime: { lt: apt.endTime } },
+                { endTime: { gt: apt.startTime } },
+              ],
+            },
+          });
+          if (conflicting) {
+            isSlotConflict = true;
+          }
+        }
+
+        const targetStatus = isCancelled && isSlotConflict
+          ? AppointmentStatus.CANCELLED
+          : AppointmentStatus.CONFIRMED;
+
+        const updatedAdminNotes = isCancelled && isSlotConflict
+          ? `[LATE_PAYMENT_RECONCILIATION] Payment of ₹${amountInINR} was captured via Razorpay (${data.razorpayPaymentId}) after checkout window expired, but slot is currently occupied. Concierge action required to reschedule or refund.`
+          : isCancelled
+          ? `[LATE_PAYMENT_RESTORED] Payment of ₹${amountInINR} received after expiry. Slot was still open and reservation was re-confirmed.`
+          : apt.adminNotes;
+
         const updatedApt = await prisma.appointment.update({
           where: { id: data.appointmentId },
           data: {
@@ -6158,7 +6227,8 @@ export const dbRepo = {
             remainingAmount: newRemaining,
             paymentStatus: newPaymentStatus,
             paymentMethod: "RAZORPAY_ONLINE",
-            status: AppointmentStatus.CONFIRMED,
+            status: targetStatus,
+            adminNotes: updatedAdminNotes,
             updatedAt: now,
           },
           include: {
@@ -6177,24 +6247,60 @@ export const dbRepo = {
           } catch {}
         }
 
-        await this.notifyAdmins(
-          "Online Payment Confirmed",
-          `Payment of ₹${amountInINR} for booking ${apt.appointmentNumber} was captured via Razorpay (ID: ${data.razorpayPaymentId}).`,
-          `/admin/appointments`
-        );
-
-        await this.logAudit({
-          action: "PAYMENT_CAPTURED",
-          entity: "PaymentRecord",
-          entityId: payment.id,
-          details: JSON.stringify({
-            appointmentId: data.appointmentId,
-            appointmentNumber: apt.appointmentNumber,
-            amount: amountInINR,
-            razorpayPaymentId: data.razorpayPaymentId,
-            paymentStatus: newPaymentStatus,
-          }),
-        });
+        if (isCancelled && isSlotConflict) {
+          await this.notifyAdmins(
+            "ACTION REQUIRED: Late Payment on Expired Booking",
+            `Late payment of ₹${amountInINR} for expired booking ${apt.appointmentNumber} was captured via Razorpay (${data.razorpayPaymentId}), but the slot is now occupied. Please contact client.`,
+            `/admin/appointments`
+          );
+          await this.logAudit({
+            action: "LATE_PAYMENT_SLOT_CONFLICT",
+            entity: "PaymentRecord",
+            entityId: payment.id,
+            details: JSON.stringify({
+              appointmentId: data.appointmentId,
+              appointmentNumber: apt.appointmentNumber,
+              amount: amountInINR,
+              razorpayPaymentId: data.razorpayPaymentId,
+              reconciliationStatus: "MANUAL_RECONCILIATION_REQUIRED",
+            }),
+          });
+        } else if (isCancelled) {
+          await this.notifyAdmins(
+            "Late Payment Re-confirmed",
+            `Payment of ₹${amountInINR} for booking ${apt.appointmentNumber} was received after expiry. Slot was available and reservation was re-confirmed.`,
+            `/admin/appointments`
+          );
+          await this.logAudit({
+            action: "LATE_PAYMENT_RESTORED",
+            entity: "PaymentRecord",
+            entityId: payment.id,
+            details: JSON.stringify({
+              appointmentId: data.appointmentId,
+              appointmentNumber: apt.appointmentNumber,
+              amount: amountInINR,
+              razorpayPaymentId: data.razorpayPaymentId,
+            }),
+          });
+        } else {
+          await this.notifyAdmins(
+            "Online Payment Confirmed",
+            `Payment of ₹${amountInINR} for booking ${apt.appointmentNumber} was captured via Razorpay (ID: ${data.razorpayPaymentId}).`,
+            `/admin/appointments`
+          );
+          await this.logAudit({
+            action: "PAYMENT_CAPTURED",
+            entity: "PaymentRecord",
+            entityId: payment.id,
+            details: JSON.stringify({
+              appointmentId: data.appointmentId,
+              appointmentNumber: apt.appointmentNumber,
+              amount: amountInINR,
+              razorpayPaymentId: data.razorpayPaymentId,
+              paymentStatus: newPaymentStatus,
+            }),
+          });
+        }
 
         // Synchronize in-memory structures
         let memTx = memoryDb.payments.find((p) => p.transactionRef === transactionRef || p.gatewayPaymentId === data.razorpayPaymentId);
@@ -6209,15 +6315,21 @@ export const dbRepo = {
           memApt.remainingAmount = newRemaining;
           memApt.paymentStatus = newPaymentStatus;
           memApt.paymentMethod = "RAZORPAY_ONLINE";
-          memApt.status = AppointmentStatus.CONFIRMED;
+          memApt.status = targetStatus;
+          memApt.adminNotes = updatedAdminNotes;
           memApt.updatedAt = now;
         }
 
         return {
           success: true,
-          message: "Payment captured successfully via Razorpay.",
+          message: isCancelled && isSlotConflict
+            ? "Payment captured successfully, but reservation window had expired and slot is occupied. Salon concierge will contact you to reschedule or refund."
+            : "Payment captured successfully via Razorpay.",
           payment,
           appointment: updatedApt,
+          latePaymentAfterExpiry: isCancelled,
+          slotConflict: isSlotConflict,
+          requiresReconciliation: isCancelled && isSlotConflict,
         };
       } catch (err: any) {
         if (shouldEnforceDurablePersistence()) {
@@ -6286,6 +6398,32 @@ export const dbRepo = {
     }
 
     const memApt = memoryDb.appointments.find((a) => a.id === data.appointmentId);
+    const isCancelled = memApt?.status === AppointmentStatus.CANCELLED;
+    let isSlotConflict = false;
+
+    if (isCancelled && memApt) {
+      const conflicting = memoryDb.appointments.find(
+        (a) =>
+          a.id !== memApt.id &&
+          a.appointmentDate === memApt.appointmentDate &&
+          ([
+            AppointmentStatus.PENDING,
+            AppointmentStatus.CONFIRMED,
+            AppointmentStatus.CHECKED_IN,
+            AppointmentStatus.IN_PROGRESS,
+          ] as any[]).includes(a.status) &&
+          a.startTime < memApt.endTime &&
+          a.endTime > memApt.startTime
+      );
+      if (conflicting) {
+        isSlotConflict = true;
+      }
+    }
+
+    const targetStatus = isCancelled && isSlotConflict
+      ? AppointmentStatus.CANCELLED
+      : AppointmentStatus.CONFIRMED;
+
     if (memApt) {
       if (amountInINR < memApt.totalAmount) {
         newRemaining = Math.max(0, memApt.totalAmount - amountInINR);
@@ -6299,41 +6437,101 @@ export const dbRepo = {
       memApt.remainingAmount = newRemaining;
       memApt.paymentStatus = newPaymentStatus;
       memApt.paymentMethod = "RAZORPAY_ONLINE";
-      memApt.status = AppointmentStatus.CONFIRMED;
+      memApt.status = targetStatus;
+      if (isCancelled && isSlotConflict) {
+        memApt.adminNotes = `[LATE_PAYMENT_RECONCILIATION] Payment of ₹${amountInINR} was captured via Razorpay (${data.razorpayPaymentId}) after checkout window expired, but slot is currently occupied. Concierge action required to reschedule or refund.`;
+      } else if (isCancelled) {
+        memApt.adminNotes = `[LATE_PAYMENT_RESTORED] Payment of ₹${amountInINR} received after expiry. Slot was still open and reservation was re-confirmed.`;
+      }
       memApt.updatedAt = now;
     }
 
     const notifProfile = memoryDb.customerProfiles.find((cp) => cp.id === apt.customerProfileId);
     const notifUser = notifProfile?.userId || "usr_admin_1";
-    memoryDb.notifications.unshift({
-      id: `notif_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      userId: notifUser,
-      title: "Online Payment Confirmed",
-      message: `Payment of ₹${amountInINR} for booking ${apt.appointmentNumber} was captured via Razorpay (ID: ${data.razorpayPaymentId}).`,
-      type: NotificationType.BOOKING,
-      isRead: false,
-      link: `/admin/appointments`,
-      createdAt: now,
-    });
 
-    await this.logAudit({
-      action: "PAYMENT_CAPTURED",
-      entity: "PaymentRecord",
-      entityId: tx.id,
-      details: JSON.stringify({
-        appointmentId: data.appointmentId,
-        appointmentNumber: apt.appointmentNumber,
-        amount: amountInINR,
-        razorpayPaymentId: data.razorpayPaymentId,
-        paymentStatus: newPaymentStatus,
-      }),
-    });
+    if (isCancelled && isSlotConflict) {
+      memoryDb.notifications.unshift({
+        id: `notif_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        userId: notifUser,
+        title: "ACTION REQUIRED: Late Payment on Expired Booking",
+        message: `Late payment of ₹${amountInINR} for expired booking ${apt.appointmentNumber} was captured via Razorpay (${data.razorpayPaymentId}), but the slot is now occupied. Please contact client.`,
+        type: NotificationType.BOOKING,
+        isRead: false,
+        link: `/admin/appointments`,
+        createdAt: now,
+      });
+
+      await this.logAudit({
+        action: "LATE_PAYMENT_SLOT_CONFLICT",
+        entity: "PaymentRecord",
+        entityId: tx.id,
+        details: JSON.stringify({
+          appointmentId: data.appointmentId,
+          appointmentNumber: apt.appointmentNumber,
+          amount: amountInINR,
+          razorpayPaymentId: data.razorpayPaymentId,
+          reconciliationStatus: "MANUAL_RECONCILIATION_REQUIRED",
+        }),
+      });
+    } else if (isCancelled) {
+      memoryDb.notifications.unshift({
+        id: `notif_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        userId: notifUser,
+        title: "Late Payment Re-confirmed",
+        message: `Payment of ₹${amountInINR} for booking ${apt.appointmentNumber} was received after expiry. Slot was available and reservation was re-confirmed.`,
+        type: NotificationType.BOOKING,
+        isRead: false,
+        link: `/admin/appointments`,
+        createdAt: now,
+      });
+
+      await this.logAudit({
+        action: "LATE_PAYMENT_RESTORED",
+        entity: "PaymentRecord",
+        entityId: tx.id,
+        details: JSON.stringify({
+          appointmentId: data.appointmentId,
+          appointmentNumber: apt.appointmentNumber,
+          amount: amountInINR,
+          razorpayPaymentId: data.razorpayPaymentId,
+        }),
+      });
+    } else {
+      memoryDb.notifications.unshift({
+        id: `notif_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        userId: notifUser,
+        title: "Online Payment Confirmed",
+        message: `Payment of ₹${amountInINR} for booking ${apt.appointmentNumber} was captured via Razorpay (ID: ${data.razorpayPaymentId}).`,
+        type: NotificationType.BOOKING,
+        isRead: false,
+        link: `/admin/appointments`,
+        createdAt: now,
+      });
+
+      await this.logAudit({
+        action: "PAYMENT_CAPTURED",
+        entity: "PaymentRecord",
+        entityId: tx.id,
+        details: JSON.stringify({
+          appointmentId: data.appointmentId,
+          appointmentNumber: apt.appointmentNumber,
+          amount: amountInINR,
+          razorpayPaymentId: data.razorpayPaymentId,
+          paymentStatus: newPaymentStatus,
+        }),
+      });
+    }
 
     return {
       success: true,
-      message: "Payment captured successfully via Razorpay.",
+      message: isCancelled && isSlotConflict
+        ? "Payment captured successfully, but reservation window had expired and slot is occupied. Salon concierge will contact you to reschedule or refund."
+        : "Payment captured successfully via Razorpay.",
       payment: tx,
       appointment: memApt || apt,
+      latePaymentAfterExpiry: isCancelled,
+      slotConflict: isSlotConflict,
+      requiresReconciliation: isCancelled && isSlotConflict,
     };
   },
 
@@ -6736,15 +6934,25 @@ export const dbRepo = {
         const totalOnline = enriched
           .filter((t) => t.status === "CAPTURED" && t.environment !== "OFFLINE")
           .reduce((sum, t) => sum + t.amount, 0);
+        const totalLiveOnline = enriched
+          .filter((t) => t.status === "CAPTURED" && t.environment === "LIVE")
+          .reduce((sum, t) => sum + t.amount, 0);
+        const totalTestOnline = enriched
+          .filter((t) => t.status === "CAPTURED" && t.environment === "TEST")
+          .reduce((sum, t) => sum + t.amount, 0);
         const totalOffline = enriched
           .filter((t) => t.status === "CAPTURED" && t.environment === "OFFLINE")
           .reduce((sum, t) => sum + t.amount, 0);
+        const realRevenue = totalLiveOnline + totalOffline;
 
         const stats = {
           totalCollected,
           totalRefunded,
           totalOnline,
+          totalLiveOnline,
+          totalTestOnline,
           totalOffline,
+          realRevenue,
           netCollected: Math.max(0, totalCollected - totalRefunded),
           capturedCount: enriched.filter((t) => t.status === "CAPTURED").length,
           pendingCount: enriched.filter((t) => t.status === "PENDING").length,
@@ -6855,15 +7063,25 @@ export const dbRepo = {
     const totalOnline = enriched
       .filter((t) => t.status === "CAPTURED" && t.environment !== "OFFLINE")
       .reduce((sum, t) => sum + t.amount, 0);
+    const totalLiveOnline = enriched
+      .filter((t) => t.status === "CAPTURED" && t.environment === "LIVE")
+      .reduce((sum, t) => sum + t.amount, 0);
+    const totalTestOnline = enriched
+      .filter((t) => t.status === "CAPTURED" && t.environment === "TEST")
+      .reduce((sum, t) => sum + t.amount, 0);
     const totalOffline = enriched
       .filter((t) => t.status === "CAPTURED" && t.environment === "OFFLINE")
       .reduce((sum, t) => sum + t.amount, 0);
+    const realRevenue = totalLiveOnline + totalOffline;
 
     const stats = {
       totalCollected,
       totalRefunded,
       totalOnline,
+      totalLiveOnline,
+      totalTestOnline,
       totalOffline,
+      realRevenue,
       netCollected: Math.max(0, totalCollected - totalRefunded),
       capturedCount: enriched.filter((t) => t.status === "CAPTURED").length,
       pendingCount: enriched.filter((t) => t.status === "PENDING").length,
@@ -7015,7 +7233,18 @@ export const dbRepo = {
 
     if (await canUsePrisma()) {
       try {
+        const whereClause: any = search && search.trim()
+          ? {
+              OR: [
+                { user: { name: { contains: search.trim(), mode: "insensitive" } } },
+                { user: { phone: { contains: search.trim() } } },
+                { user: { email: { contains: search.trim(), mode: "insensitive" } } },
+              ],
+            }
+          : {};
+
         const customers = await prisma.customerProfile.findMany({
+          where: whereClause,
           include: {
             user: true,
             appointments: {
@@ -9415,7 +9644,8 @@ export const dbRepo = {
           const [aptH, aptM] = apt.startTime.split(":").map(Number);
           const aptMinutes = aptH * 60 + aptM;
 
-          return aptMinutes >= nowMinutes - 15 && aptMinutes <= windowEndMinutes;
+          // Never select an appointment that has already started or passed
+          return aptMinutes > nowMinutes && aptMinutes <= windowEndMinutes;
         });
       } catch (err) {
         console.warn("[PRISMA_GET_ELIGIBLE_REMINDERS_FALLBACK]", err);
@@ -9438,7 +9668,8 @@ export const dbRepo = {
       );
       if (hasSent) return false;
 
-      return aptMinutes >= nowMinutes - 15 && aptMinutes <= windowEndMinutes;
+      // Never select an appointment that has already started or passed
+      return aptMinutes > nowMinutes && aptMinutes <= windowEndMinutes;
     });
   },
 

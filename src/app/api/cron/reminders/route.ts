@@ -36,17 +36,41 @@ async function handleCronExecution(req: NextRequest) {
       }
     }
 
-    // 1. Process reminders due in approximately the next ~75 minutes (in Asia/Kolkata timezone)
-    const result = await emailService.processScheduledReminders(75);
+    // 1. Automatic 1-hour appointment reminders under Vercel Hobby daily schedule:
+    // On Vercel Hobby plan, cron jobs execute at most once per day ("0 0 * * *", 00:00 UTC / ~05:30 IST).
+    // A daily cron cannot reliably dispatch exact 1-hour prior reminders for salon appointments (10:00 - 22:00 IST).
+    // Automatic 1-hour reminders are safely paused by default under once-daily execution to prevent late or incorrectly timed emails.
+    // They can be enabled when a high-frequency cron scheduler or Vercel Pro is available via ENABLE_SCHEDULED_REMINDERS="true".
+    const shouldDispatchHourlyReminders = process.env.ENABLE_SCHEDULED_REMINDERS === "true";
 
-    // 2. Automatically expire abandoned online checkout reservations older than 60 minutes
+    let reminderResult = {
+      eligibleCount: 0,
+      sentCount: 0,
+      skippedCount: 0,
+      status: "PAUSED_DAILY_CRON",
+      notice: "Automatic ~1-hour reminders safely paused under Vercel Hobby once-daily schedule (00:00 UTC). Exact 1-hour prior delivery requires high-frequency cron scheduling or Vercel Pro. Can be enabled with ENABLE_SCHEDULED_REMINDERS=true.",
+      errors: [] as string[],
+    };
+
+    if (shouldDispatchHourlyReminders) {
+      const execResult = await emailService.processScheduledReminders(75);
+      reminderResult = {
+        ...execResult,
+        status: "ACTIVE",
+        notice: "Dispatched via high-frequency reminder scheduler.",
+      };
+    }
+
+    // 2. Daily sweep: Automatically expire abandoned online checkout reservations older than 60 minutes
+    // (Serves as nightly backup sweep alongside on-demand availability cleanup)
     const expiryResult = await dbRepo.expireAbandonedOnlineReservations(60);
 
     return NextResponse.json({
       success: true,
-      message: `Processed ${result.eligibleCount} eligible appointments: ${result.sentCount} reminder(s) dispatched. Expired ${expiryResult.dbCount || expiryResult.memCount} abandoned online reservation(s).`,
+      cronSchedule: "0 0 * * * (Once daily at 00:00 UTC / ~05:30 IST)",
+      message: `Daily maintenance completed: ${expiryResult.dbCount || expiryResult.memCount} stale reservation(s) expired. Reminders status: ${reminderResult.status}.`,
       summary: {
-        reminders: result,
+        reminders: reminderResult,
         reservationsExpired: expiryResult,
       },
       timestamp: new Date().toISOString(),

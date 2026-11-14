@@ -7,6 +7,7 @@
 import dbRepo from "@/lib/db/repo";
 import { BRAND_CONFIG } from "@/lib/constants/brand";
 import { EmailEventType, EmailDeliveryStatus } from "@prisma/client";
+import { getKolkataDateString, getKolkataTimeString } from "@/lib/utils/timezone";
 import { resendClient } from "./resend";
 import {
   renderBookingConfirmationEmail,
@@ -354,6 +355,37 @@ export class EmailNotificationService {
       // Check status: never send for cancelled, rejected, or completed
       if (!["CONFIRMED", "PENDING"].includes(apt.status)) {
         return { success: false, error: `Appointment status ${apt.status} is not eligible for reminder` };
+      }
+
+      // Prevent late or incorrectly timed reminders:
+      // Never send a reminder for an appointment that has already started or passed.
+      const todayKolkata = getKolkataDateString();
+      const timeKolkata = getKolkataTimeString();
+      const aptDateRaw = apt.appointmentDate instanceof Date 
+        ? getKolkataDateString(apt.appointmentDate) 
+        : (typeof apt.appointmentDate === "string" && apt.appointmentDate.includes("T") 
+          ? apt.appointmentDate.split("T")[0] 
+          : String(apt.appointmentDate || ""));
+
+      if (aptDateRaw && aptDateRaw < todayKolkata) {
+        return {
+          success: false,
+          error: `Appointment date ${aptDateRaw} has already passed. Reminder skipped.`,
+        };
+      }
+
+      if (aptDateRaw === todayKolkata && apt.startTime) {
+        const [curH, curM] = timeKolkata.split(":").map(Number);
+        const [aptH, aptM] = apt.startTime.split(":").map(Number);
+        const curMinutes = curH * 60 + curM;
+        const aptMinutes = aptH * 60 + aptM;
+
+        if (curMinutes >= aptMinutes) {
+          return {
+            success: false,
+            error: `Appointment at ${apt.startTime} has already started or passed. Reminder skipped.`,
+          };
+        }
       }
 
       const customerEmail = apt.customerEmail?.trim().toLowerCase();

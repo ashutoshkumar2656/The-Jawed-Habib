@@ -37,6 +37,10 @@ export async function GET(req: NextRequest) {
       .map((s) => s.trim())
       .filter(Boolean);
 
+    // Phase 3: Trigger safe on-demand cleanup of abandoned online checkout reservations older than 60 minutes
+    // before computing availability. This ensures released slots are immediately bookable even with a once-daily cron.
+    await dbRepo.expireAbandonedOnlineReservations(60);
+
     let monthData = null;
     let slotsData = null;
 

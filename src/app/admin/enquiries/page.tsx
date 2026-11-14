@@ -57,20 +57,32 @@ export default function AdminEnquiriesPage() {
   const [editNotes, setEditNotes] = React.useState("");
   const [copiedId, setCopiedId] = React.useState<string | null>(null);
 
+  const abortControllerRef = React.useRef<AbortController | null>(null);
+
   const fetchEnquiries = React.useCallback(async () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
       setLoading(true);
       const params = new URLSearchParams();
       if (statusFilter !== "ALL") params.append("status", statusFilter);
       if (search.trim()) params.append("q", search.trim());
 
-      const res = await fetch(`/api/admin/enquiries?${params.toString()}`);
+      const res = await fetch(`/api/admin/enquiries?${params.toString()}`, {
+        signal: controller.signal,
+      });
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
         setEnquiries(json.data);
       }
-    } catch (e) {
-      console.error("Failed to load enquiries:", e);
+    } catch (e: any) {
+      if (e.name !== "AbortError") {
+        console.error("Failed to load enquiries:", e);
+      }
     } finally {
       setLoading(false);
     }
@@ -249,11 +261,10 @@ export default function AdminEnquiriesPage() {
             <button
               key={filter}
               onClick={() => setStatusFilter(filter)}
-              className={`px-3 py-1.5 rounded-md text-[11px] font-medium whitespace-nowrap transition-colors ${
-                statusFilter === filter
-                  ? "bg-salon-gold text-black font-semibold shadow-sm"
-                  : "text-zinc-400 hover:text-white bg-zinc-900/60 border border-zinc-800"
-              }`}
+              className={`px-3 py-1.5 rounded-md text-[11px] font-medium whitespace-nowrap transition-colors ${statusFilter === filter
+                ? "bg-salon-gold text-black font-semibold shadow-sm"
+                : "text-zinc-400 hover:text-white bg-zinc-900/60 border border-zinc-800"
+                }`}
             >
               {filter}
               {filter !== "ALL" && (
@@ -383,17 +394,16 @@ export default function AdminEnquiriesPage() {
                         <select
                           value={e.status}
                           onChange={(ev) => handleUpdateStatus(e.id, ev.target.value as any)}
-                          className={`rounded border px-2 py-1 text-[11px] font-semibold focus:outline-none focus:border-salon-gold ${
-                            e.status === "NEW"
-                              ? "bg-amber-950/80 text-amber-300 border-amber-800"
-                              : e.status === "CONTACTED"
+                          className={`rounded border px-2 py-1 text-[11px] font-semibold focus:outline-none focus:border-salon-gold ${e.status === "NEW"
+                            ? "bg-amber-950/80 text-amber-300 border-amber-800"
+                            : e.status === "CONTACTED"
                               ? "bg-blue-950/80 text-blue-300 border-blue-800"
                               : e.status === "SCHEDULED"
-                              ? "bg-purple-950/80 text-purple-300 border-purple-800"
-                              : e.status === "RESOLVED"
-                              ? "bg-emerald-950/80 text-emerald-300 border-emerald-800"
-                              : "bg-red-950/80 text-red-300 border-red-800"
-                          }`}
+                                ? "bg-purple-950/80 text-purple-300 border-purple-800"
+                                : e.status === "RESOLVED"
+                                  ? "bg-emerald-950/80 text-emerald-300 border-emerald-800"
+                                  : "bg-red-950/80 text-red-300 border-red-800"
+                            }`}
                         >
                           <option value="NEW">NEW</option>
                           <option value="CONTACTED">CONTACTED</option>
@@ -410,13 +420,12 @@ export default function AdminEnquiriesPage() {
                           <div className="flex items-center gap-1.5">
                             <span className="text-[9px] text-zinc-500 uppercase font-mono w-10">Email:</span>
                             <span
-                              className={`px-1.5 py-0.2 rounded text-[9px] font-semibold border ${
-                                e.emailStatus === "SENT" || e.emailStatus === "SIMULATED"
-                                  ? "bg-emerald-950/80 text-emerald-300 border-emerald-800"
-                                  : e.emailStatus === "FAILED"
+                              className={`px-1.5 py-0.2 rounded text-[9px] font-semibold border ${e.emailStatus === "SENT" || e.emailStatus === "SIMULATED"
+                                ? "bg-emerald-950/80 text-emerald-300 border-emerald-800"
+                                : e.emailStatus === "FAILED"
                                   ? "bg-red-950/80 text-red-300 border-red-800"
                                   : "bg-amber-950/80 text-amber-300 border-amber-800"
-                              }`}
+                                }`}
                             >
                               {e.emailStatus || "PENDING"}
                             </span>
@@ -437,15 +446,14 @@ export default function AdminEnquiriesPage() {
                           <div className="flex items-center gap-1.5">
                             <span className="text-[9px] text-zinc-500 uppercase font-mono w-10">Sheets:</span>
                             <span
-                              className={`px-1.5 py-0.2 rounded text-[9px] font-semibold border ${
-                                e.googleSheetsStatus === "SYNCED" || (e.googleSheetsStatus as any) === "SIMULATED"
-                                  ? "bg-emerald-950/80 text-emerald-300 border-emerald-800"
-                                  : e.googleSheetsStatus === "DISABLED"
+                              className={`px-1.5 py-0.2 rounded text-[9px] font-semibold border ${e.googleSheetsStatus === "SYNCED" || (e.googleSheetsStatus as any) === "SIMULATED"
+                                ? "bg-emerald-950/80 text-emerald-300 border-emerald-800"
+                                : e.googleSheetsStatus === "DISABLED"
                                   ? "bg-zinc-900 text-zinc-500 border-zinc-800"
                                   : e.googleSheetsStatus === "FAILED"
-                                  ? "bg-red-950/80 text-red-300 border-red-800"
-                                  : "bg-amber-950/80 text-amber-300 border-amber-800"
-                              }`}
+                                    ? "bg-red-950/80 text-red-300 border-red-800"
+                                    : "bg-amber-950/80 text-amber-300 border-amber-800"
+                                }`}
                             >
                               {e.googleSheetsStatus || "PENDING"}
                             </span>
@@ -627,11 +635,10 @@ export default function AdminEnquiriesPage() {
                       type="button"
                       onClick={() => handleUpdateStatus(selectedEnquiry.id, st)}
                       disabled={actionLoading}
-                      className={`px-2.5 py-1 rounded text-[10px] font-semibold border transition-colors ${
-                        selectedEnquiry.status === st
-                          ? "bg-salon-gold text-black border-salon-gold"
-                          : "bg-zinc-900 text-zinc-300 border-zinc-800 hover:border-salon-gold/50"
-                      }`}
+                      className={`px-2.5 py-1 rounded text-[10px] font-semibold border transition-colors ${selectedEnquiry.status === st
+                        ? "bg-salon-gold text-black border-salon-gold"
+                        : "bg-zinc-900 text-zinc-300 border-zinc-800 hover:border-salon-gold/50"
+                        }`}
                     >
                       Mark as {st}
                     </button>

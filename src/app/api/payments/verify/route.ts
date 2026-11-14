@@ -3,6 +3,7 @@ import { paymentVerifySchema } from "@/lib/validation/schemas";
 import dbRepo from "@/lib/db/repo";
 import emailService from "@/lib/email/service";
 import { verifyRazorpayPaymentSignature } from "@/lib/payments/razorpay";
+import { checkRateLimit } from "@/lib/security/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -10,6 +11,22 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
+    const clientIp =
+      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      req.headers.get("x-real-ip") ||
+      "127.0.0.1";
+    const rateLimit = checkRateLimit(`verify_ip_${clientIp}`, 30, 10 * 60 * 1000);
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Too many payment verification attempts. Please wait a few minutes.",
+          retryAfterMs: rateLimit.resetInMs,
+        },
+        { status: 429 }
+      );
+    }
+
     const body = await req.json();
     const validation = paymentVerifySchema.safeParse(body);
 
@@ -111,10 +128,15 @@ export async function POST(req: NextRequest) {
         console.warn("[PAYMENT_RECEIPT_EMAIL_DISPATCH_BACKGROUND_ERROR]", emailErr?.message);
       });
 
+    const clientMessage = result.message || "Payment signature verified and marked as CAPTURED.";
+
     return NextResponse.json({
       success: true,
-      message: "Payment signature verified and marked as CAPTURED.",
+      message: clientMessage,
       duplicate: !!result.isDuplicate,
+      latePaymentAfterExpiry: !!(result as any).latePaymentAfterExpiry,
+      slotConflict: !!(result as any).slotConflict,
+      requiresReconciliation: !!(result as any).requiresReconciliation,
       data: {
         paymentId: result.payment?.id,
         appointmentId,
@@ -123,6 +145,7 @@ export async function POST(req: NextRequest) {
         razorpayPaymentId: paymentId,
         amount: result.payment?.amount,
         status: "CAPTURED",
+        appointmentStatus: result.appointment?.status,
         paymentStatus: result.appointment?.paymentStatus,
         remainingAmount: result.appointment?.remainingAmount,
       },

@@ -82,17 +82,27 @@ export default function AdminCustomersPage() {
   const [savingNotes, setSavingNotes] = React.useState(false);
   const [feedback, setFeedback] = React.useState<{ type: "success" | "error"; text: string } | null>(null);
 
+  const abortControllerRef = React.useRef<AbortController | null>(null);
+
   const fetchCustomers = React.useCallback(async () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
       setLoading(true);
       const params = searchTerm ? `?search=${encodeURIComponent(searchTerm.trim())}` : "";
-      const res = await fetch(`/api/admin/customers${params}`);
+      const res = await fetch(`/api/admin/customers${params}`, { signal: controller.signal });
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
         setCustomers(json.data);
       }
-    } catch (e) {
-      console.error("Failed to load customers:", e);
+    } catch (e: any) {
+      if (e.name !== "AbortError") {
+        console.error("Failed to load customers:", e);
+      }
     } finally {
       setLoading(false);
     }

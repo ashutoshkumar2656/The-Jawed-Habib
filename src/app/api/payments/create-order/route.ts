@@ -55,6 +55,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (appointment.status === "CANCELLED" || appointment.status === "NO_SHOW" || appointment.status === "REJECTED") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Cannot initialize payment for an expired or cancelled appointment. Please book a new reservation.",
+        },
+        { status: 400 }
+      );
+    }
+
     if (appointment.paymentStatus === "PAID") {
       return NextResponse.json(
         { success: false, error: "This appointment has already been fully paid." },
