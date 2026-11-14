@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { checkAdminAuth } from "@/lib/auth/rbac";
 import fs from "fs/promises";
 import path from "path";
+import crypto from "crypto";
 
 export const runtime = "nodejs";
 
@@ -87,12 +88,58 @@ export async function POST(req: NextRequest) {
     const uniqueFilename = `${baseSlug}-${Date.now()}${ext}`;
     const destinationPath = path.join(uploadDir, uniqueFilename);
 
-    // Write file
+    // Read buffer
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
-    await fs.writeFile(destinationPath, buffer);
 
-    const publicUrl = `/uploads/${safeFolder}/${uniqueFilename}`;
+    let publicUrl = "";
+
+    // Attempt secure Cloudinary Signed Upload if credentials are configured
+    const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || process.env.CLOUDINARY_CLOUD_NAME;
+    const apiKey = process.env.CLOUDINARY_API_KEY;
+    const apiSecret = process.env.CLOUDINARY_API_SECRET;
+
+    if (cloudName && apiKey && apiSecret && !apiKey.includes("your_") && !apiSecret.includes("your_")) {
+      try {
+        const timestamp = Math.floor(Date.now() / 1000);
+        const folderTarget = `jawed_habib_lalganj/${safeFolder}`;
+        const paramsToSign = `folder=${folderTarget}&timestamp=${timestamp}${apiSecret}`;
+        const signature = crypto.createHash("sha1").update(paramsToSign).digest("hex");
+
+        const cldFormData = new FormData();
+        const blob = new Blob([buffer], { type: file.type });
+        cldFormData.append("file", blob, file.name);
+        cldFormData.append("api_key", apiKey);
+        cldFormData.append("timestamp", timestamp.toString());
+        cldFormData.append("signature", signature);
+        cldFormData.append("folder", folderTarget);
+
+        const resourceType = isVideo ? "video" : "image";
+        const cldRes = await fetch(
+          `https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`,
+          {
+            method: "POST",
+            body: cldFormData,
+            signal: AbortSignal.timeout(12000),
+          }
+        );
+
+        if (cldRes.ok) {
+          const cldData = await cldRes.json();
+          if (cldData.secure_url) {
+            publicUrl = cldData.secure_url;
+          }
+        }
+      } catch (cldErr) {
+        console.warn("Cloudinary upload failed, falling back to local file storage:", cldErr);
+      }
+    }
+
+    // Local file storage (fallback or default local development mode)
+    if (!publicUrl) {
+      await fs.writeFile(destinationPath, buffer);
+      publicUrl = `/uploads/${safeFolder}/${uniqueFilename}`;
+    }
 
     return NextResponse.json(
       {
@@ -103,6 +150,7 @@ export async function POST(req: NextRequest) {
           originalName: file.name,
           size: file.size,
           mimeType: file.type,
+          storage: publicUrl.startsWith("http") ? "CLOUDINARY" : "LOCAL",
         },
       },
       { status: 201 }

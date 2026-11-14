@@ -40,7 +40,10 @@ export async function POST(req: NextRequest) {
     });
 
     if (!isValid) {
-      console.error("Razorpay webhook signature verification failed.");
+      console.warn("[RAZORPAY_WEBHOOK_SIGNATURE_FAILED]", {
+        timestamp: new Date().toISOString(),
+        hasSignature: !!signature,
+      });
       return NextResponse.json(
         { success: false, error: "Invalid webhook signature" },
         { status: 400 }
@@ -160,7 +163,10 @@ export async function POST(req: NextRequest) {
       eventId,
     });
   } catch (error: any) {
-    console.error("Razorpay webhook handler error:", error);
+    console.error("[RAZORPAY_WEBHOOK_HANDLER_ERROR]", {
+      message: error?.message || "Failed to process webhook",
+      timestamp: new Date().toISOString(),
+    });
     return NextResponse.json(
       { success: false, error: error.message || "Failed to process webhook" },
       { status: 500 }

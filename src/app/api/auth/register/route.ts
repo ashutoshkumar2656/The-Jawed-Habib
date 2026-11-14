@@ -4,12 +4,32 @@ import { hashPassword } from "@/lib/auth/password";
 import { signToken } from "@/lib/auth/jwt";
 import dbRepo from "@/lib/db/repo";
 import { SESSION_COOKIE_NAME } from "@/lib/auth/session";
+import { checkRateLimit } from "@/lib/security/rate-limit";
+import logger, { maskPhone } from "@/lib/logging/logger";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
   try {
+    const clientIp =
+      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      req.headers.get("x-real-ip") ||
+      "127.0.0.1";
+
+    const rateLimit = checkRateLimit(`register_ip_${clientIp}`, 5, 10 * 60 * 1000);
+    if (!rateLimit.allowed) {
+      logger.warn("auth.register.rate_limited", { clientIp });
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Too many registration attempts. Please wait a few minutes before trying again.",
+          retryAfterMs: rateLimit.resetInMs,
+        },
+        { status: 429 }
+      );
+    }
+
     const body = await req.json();
     const result = customerRegisterSchema.safeParse(body);
 
@@ -95,9 +115,14 @@ export async function POST(req: NextRequest) {
       path: "/",
     });
 
+    logger.info("auth.register.success", {
+      userId: user.id,
+      phone: maskPhone(user.phone),
+    });
+
     return response;
   } catch (error) {
-    console.error("Register API error:", error);
+    logger.error("auth.register.failed", error);
     return NextResponse.json(
       { success: false, error: "Internal server error during registration" },
       { status: 500 }

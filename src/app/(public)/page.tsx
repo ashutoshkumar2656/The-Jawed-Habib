@@ -449,9 +449,11 @@ export default function HomePage() {
       {/* 07: Advance Deposit Selection (₹1,000 - ₹2,500)                */}
       {/* 08: Final Booking Summary & Razorpay Standard Checkout        */}
       {/* ============================================================== */}
-      <React.Suspense fallback={<div className="h-96 w-full animate-pulse rounded-2xl bg-zinc-900/40" />}>
-        <BridalBookingExperience />
-      </React.Suspense>
+      <div id="packages" className="scroll-mt-24">
+        <React.Suspense fallback={<div className="h-96 w-full animate-pulse rounded-2xl bg-zinc-900/40" />}>
+          <BridalBookingExperience />
+        </React.Suspense>
+      </div>
 
       {/* ============================================================== */}
       {/* SECTION 09: BRIDAL CONSULTATION (WhatsApp Mockup)              */}
@@ -709,11 +711,14 @@ export default function HomePage() {
       {/* ============================================================== */}
       {/* SECTION 15: HAIR & BEAUTY SHOWCASE (Beyond Bridal)             */}
       {/* ============================================================== */}
-      <BeyondBridalSection />
+      <div id="services" className="scroll-mt-24">
+        <BeyondBridalSection />
+      </div>
 
       {/* ============================================================== */}
       {/* SECTION 16: SALON EXPERIENCE / INTERIOR GALLERY                */}
       {/* ============================================================== */}
+      <span id="gallery" className="scroll-mt-24" />
       <section id="location" className="mx-auto max-w-7xl px-4 py-16 md:px-6 md:py-24 border-t border-white/10">
         <div className="max-w-3xl space-y-3 mb-12">
           <p className="text-xs font-bold uppercase tracking-[0.25em] text-salon-gold">
@@ -1070,6 +1075,7 @@ export default function HomePage() {
       {/* ============================================================== */}
       {/* SECTION 21: FINAL BOOKING CTA                                  */}
       {/* ============================================================== */}
+      <span id="availability" className="scroll-mt-24" />
       <section id="reserve" className="relative py-24 overflow-hidden border-t border-white/10 bg-gradient-to-b from-zinc-950 via-salon-black to-black text-center">
         <div className="absolute inset-0 bg-radial-gradient from-salon-gold/10 via-transparent to-transparent pointer-events-none" />
 

@@ -14,6 +14,7 @@ import {
   CalendarDays,
   FileSpreadsheet,
   Settings,
+  Sliders,
   ChevronLeft,
   ChevronRight,
   ExternalLink,
@@ -125,6 +126,15 @@ const navItems: NavItem[] = [
     href: "/admin/settings",
     matchPrefixes: ["/admin/settings", "/admin/users", "/admin/staff"],
     icon: Settings,
+    group: "SYSTEM",
+  },
+  {
+    title: "Payment Gateway",
+    shortTitle: "Gateway",
+    href: "/admin/settings/payment-gateway",
+    matchPrefixes: ["/admin/settings/payment-gateway", "/admin/settings/razorpay"],
+    icon: Sliders,
+    badge: "Razorpay",
     group: "SYSTEM",
   },
 ];

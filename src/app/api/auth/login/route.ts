@@ -5,6 +5,7 @@ import { signToken } from "@/lib/auth/jwt";
 import dbRepo from "@/lib/db/repo";
 import { SESSION_COOKIE_NAME } from "@/lib/auth/session";
 import { checkRateLimit } from "@/lib/security/rate-limit";
+import logger, { maskPhone } from "@/lib/logging/logger";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -45,6 +46,10 @@ export async function POST(req: NextRequest) {
     const user = await dbRepo.findUserByPhoneOrEmail(phoneOrEmail);
 
     if (!user || !user.passwordHash) {
+      logger.warn("auth.login.failed_credentials", {
+        target: maskPhone(phoneOrEmail),
+        clientIp,
+      });
       return NextResponse.json(
         {
           success: false,
@@ -56,6 +61,10 @@ export async function POST(req: NextRequest) {
 
     const isValidPassword = await comparePassword(password, user.passwordHash);
     if (!isValidPassword) {
+      logger.warn("auth.login.failed_credentials", {
+        target: maskPhone(phoneOrEmail),
+        clientIp,
+      });
       return NextResponse.json(
         {
           success: false,
@@ -111,9 +120,26 @@ export async function POST(req: NextRequest) {
       path: "/",
     });
 
+    // Persist session in database for administrative roles
+    if (["SUPER_ADMIN", "ADMIN", "MANAGER", "STAFF"].includes(user.roleType)) {
+      const expiresAt = new Date(Date.now() + cookieMaxAge * 1000);
+      await dbRepo.recordAdminSession({
+        userId: user.id,
+        token,
+        ipAddress: clientIp,
+        userAgent: req.headers.get("user-agent") || null,
+        expiresAt,
+      });
+    }
+
+    logger.info("auth.login.success", {
+      userId: user.id,
+      role: user.roleType,
+    });
+
     return response;
   } catch (error) {
-    console.error("Login API error:", error);
+    logger.error("auth.login.failed", error);
     return NextResponse.json(
       { success: false, error: "Internal server error during authentication" },
       { status: 500 }

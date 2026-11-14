@@ -51,7 +51,7 @@ export function Header() {
 
   const announcementText = cms.header_announcement || "✨ Wedding Season Booking Open • Reserve Your Bridal Suite in Lalganj with Instant Advance Confirmation";
   const ctaLabel = cms.header_cta_label || "Book Appointment";
-  const ctaLink = cms.header_cta_link || "/#availability";
+  const ctaLink = cms.header_cta_link || "/booking";
   const primaryPhone = cms.primary_phone || BRAND_CONFIG.contact.primaryPhone;
   const openingHours = cms.opening_hours || BRAND_CONFIG.hours.display;
 
@@ -244,7 +244,7 @@ export function Header() {
             </div>
 
             <div className="pt-4 border-t border-zinc-800 flex flex-col gap-3">
-              <Link href="/#availability" onClick={() => setMobileMenuOpen(false)}>
+              <Link href={ctaLink} onClick={() => setMobileMenuOpen(false)}>
                 <Button variant="gold" className="w-full justify-center gap-2">
                   <Calendar className="h-4 w-4" />
                   <span>Book Appointment</span>

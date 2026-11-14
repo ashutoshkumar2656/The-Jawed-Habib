@@ -18,4 +18,6 @@ function mirrorDirs(srcDir, targetDir) {
 const srcApp = path.resolve('src/app');
 const targetApp = path.resolve('.next/server/app');
 mirrorDirs(srcApp, targetApp);
-console.log('Successfully precreated .next/server/app directory tree');
+const targetTypes = path.resolve('.next/types/app');
+mirrorDirs(srcApp, targetTypes);
+console.log('Successfully precreated .next/server/app and .next/types/app directory trees');

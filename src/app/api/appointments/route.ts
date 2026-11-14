@@ -39,11 +39,18 @@ export async function POST(req: NextRequest) {
     const validatedData = appointmentBookingSchema.safeParse(body);
 
     if (!validatedData.success) {
+      const fieldErrors = validatedData.error.flatten().fieldErrors;
+      const firstErrorMessage = Object.values(fieldErrors).flat()[0] || "Validation failed";
+      console.warn("[BOOKING_VALIDATION_FAILURE]", {
+        errors: fieldErrors,
+        clientIp,
+        receivedKeys: Object.keys(body || {}),
+      });
       return NextResponse.json(
         {
           success: false,
-          error: "Validation failed",
-          details: validatedData.error.flatten().fieldErrors,
+          error: `Validation failed: ${firstErrorMessage}`,
+          details: fieldErrors,
         },
         { status: 400 }
       );
@@ -64,6 +71,7 @@ export async function POST(req: NextRequest) {
       bridalRequirements,
       advanceAmount,
       source,
+      selectedAddons,
     } = validatedData.data;
 
     // 3. Duplicate submission check (prevents rapid double-clicks within 60s)
@@ -117,6 +125,7 @@ export async function POST(req: NextRequest) {
         bridalRequirements: bridalRequirements ? sanitizeInput(bridalRequirements) : null,
         advanceAmount,
         source: (source as BookingSource) || BookingSource.ONLINE_WEBSITE,
+        selectedAddons,
       });
 
       // 6. Generate verified WhatsApp click-to-chat URL
@@ -153,11 +162,19 @@ export async function POST(req: NextRequest) {
       );
     } catch (bookingError: unknown) {
       const errorMsg = (bookingError as Error).message || "Booking failed";
-      if (errorMsg.includes("CONFLICT_DOUBLE_BOOKING")) {
+      console.warn("[BOOKING_CREATION_FAILED]", {
+        error: errorMsg,
+        date: appointmentDate,
+        time: startTime,
+        serviceCount: serviceIds.length,
+      });
+      if (errorMsg.includes("CONFLICT_DOUBLE_BOOKING") || errorMsg.includes("CONFLICT_CLOSED")) {
         return NextResponse.json(
           {
             success: false,
-            error: "Selected time slot is no longer available. Please choose another time.",
+            error: errorMsg.includes("CONFLICT_CLOSED")
+              ? "The salon is closed on this date. Please select another date."
+              : "Selected time slot is no longer available. Please choose another time.",
             conflict: true,
           },
           { status: 409 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getRequestSessionUser } from "@/lib/auth/session";
 import { reviewSubmitSchema } from "@/lib/validation/schemas";
 import dbRepo from "@/lib/db/repo";
+import { checkRateLimit } from "@/lib/security/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -30,6 +31,18 @@ export async function POST(req: NextRequest) {
           error: "You must be logged in to submit a review.",
         },
         { status: 401 }
+      );
+    }
+
+    const rateLimit = checkRateLimit(`review_submit_${session.userId}`, 5, 60 * 60 * 1000);
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "You have submitted multiple reviews recently. Please wait before submitting another.",
+          retryAfterMs: rateLimit.resetInMs,
+        },
+        { status: 429 }
       );
     }
 

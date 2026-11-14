@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import dbRepo from "@/lib/db/repo";
 import { checkAdminAuth } from "@/lib/auth/rbac";
 import { collectRemainingPaymentSchema } from "@/lib/validation/schemas";
+import logger from "@/lib/logging/logger";
 
 export const runtime = "nodejs";
 
@@ -93,6 +94,12 @@ export async function POST(req: NextRequest) {
       salonAddress: "1st Floor, Tinpulwa Chowk, Lalganj, Bihar – 844121",
       salonPhone: "7707000463",
     };
+
+    logger.audit(
+      "bridal.remaining_balance_collected",
+      { userId: auth.user?.userId, role: auth.user?.role },
+      { appointmentId, amount, paymentMethod, newRemainingBalance: newRemaining }
+    );
 
     return NextResponse.json({
       success: true,

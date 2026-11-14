@@ -12,6 +12,7 @@ import {
   EnquiryStatus,
 } from "@prisma/client";
 import { BRAND_CONFIG } from "@/lib/constants/brand";
+import { BRIDAL_ADDONS, validateAddonIds } from "@/lib/constants/bridal";
 import bcrypt from "bcryptjs";
 import type {
   AdminServiceInput,
@@ -39,25 +40,40 @@ import {
   maskKeyId,
 } from "@/lib/security/encryption";
 
-// Connection check: avoids socket timeout hangs during Vitest runs
+// Connection check: avoids socket timeout hangs during Vitest runs while supporting resilient Neon PostgreSQL wakeups
 let postgresConnectionTested = false;
 let isPostgresAvailable = false;
+let lastPostgresTestAt = 0;
 
 async function canUsePrisma(): Promise<boolean> {
   if (process.env.NODE_ENV === "test" && !process.env.FORCE_DB) {
     return false;
   }
-  if (postgresConnectionTested) {
-    return isPostgresAvailable;
+  if (!process.env.DATABASE_URL) {
+    return false;
   }
+
+  // If already confirmed available, return immediately
+  if (isPostgresAvailable) {
+    return true;
+  }
+
+  const now = Date.now();
+  // If a previous check failed, wait 10 seconds before retrying (prevents thundering herd on cold start)
+  if (postgresConnectionTested && now - lastPostgresTestAt < 10000) {
+    return false;
+  }
+
   postgresConnectionTested = true;
+  lastPostgresTestAt = now;
+
   try {
-    const checkPromise = prisma.$queryRaw`SELECT 1`;
+    const checkPromise = prisma.$queryRaw`SELECT 1 as connected`;
     // Prevent unhandled promise rejection if Promise.race times out before Prisma fails
     checkPromise.catch(() => {});
     await Promise.race([
       checkPromise,
-      new Promise((_, reject) => setTimeout(() => reject(new Error("DB_TIMEOUT")), 1000)),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("DB_TIMEOUT")), 3500)),
     ]);
     isPostgresAvailable = true;
   } catch {
@@ -289,6 +305,7 @@ export interface RazorpaySettings {
   allowOfflineRecording: boolean;
   minAdvanceAmount?: number;
   maxAdvanceAmount?: number;
+  defaultAdvanceAmount?: number;
   suggestedAdvanceOptions?: number[];
   allowCustomerSelectAdvance?: boolean;
   belowMinPolicy?: "CAP_AT_SERVICE_PRICE" | "CHARGE_FULL_PRICE";
@@ -298,6 +315,7 @@ export interface RazorpaySettings {
   liveKeyId: string;
   liveKeySecretEncrypted: string;
   liveWebhookSecretEncrypted: string;
+  confirmedLiveActivation?: boolean;
   isTestVerified: boolean;
   isLiveVerified: boolean;
   lastConnectionTestAt: Date | null;
@@ -596,6 +614,16 @@ class MemoryDatabase {
   webhookEvents: MemoryWebhookEvent[] = [];
   offlinePayments: MemoryOfflinePayment[] = [];
   mediaItems: MemoryMediaItem[] = [];
+  adminSessions: {
+    id: string;
+    userId: string;
+    token: string;
+    ipAddress?: string | null;
+    userAgent?: string | null;
+    expiresAt: Date;
+    createdAt: Date;
+    lastActiveAt: Date;
+  }[] = [];
 
   constructor() {
     this.seed();
@@ -2052,6 +2080,7 @@ class MemoryDatabase {
       allowOfflineRecording: true,
       minAdvanceAmount: 1000,
       maxAdvanceAmount: 2500,
+      defaultAdvanceAmount: 1000,
       suggestedAdvanceOptions: [1000, 1500, 2000, 2500],
       allowCustomerSelectAdvance: true,
       belowMinPolicy: "CAP_AT_SERVICE_PRICE",
@@ -3318,6 +3347,7 @@ export const dbRepo = {
     source?: BookingSource;
     holdToken?: string | null;
     internalNotes?: string | null;
+    selectedAddons?: string[];
   }) {
     const settings = await this.getCalendarSettings();
     if (settings.status === "DISABLED") {
@@ -3325,6 +3355,11 @@ export const dbRepo = {
     }
 
     const services = await Promise.all(data.serviceIds.map((id) => this.getServiceById(id)));
+    for (let i = 0; i < data.serviceIds.length; i++) {
+      if (!services[i]) {
+        throw new Error(`Invalid service ID: "${data.serviceIds[i]}" does not exist.`);
+      }
+    }
     const validServices = services.filter(Boolean);
     if (validServices.length === 0) {
       throw new Error("No valid services selected for booking");
@@ -3335,6 +3370,20 @@ export const dbRepo = {
         throw new Error(
           `The service "${s.name}" cannot be booked online. Please contact the salon at +91 7707000463.`
         );
+      }
+    }
+
+    // Authoritative Add-on Validation and Pricing
+    let addonsSubtotal = 0;
+    const addonLabels: string[] = [];
+    if (data.selectedAddons && data.selectedAddons.length > 0) {
+      const addonValidation = validateAddonIds(data.selectedAddons);
+      if (!addonValidation.valid) {
+        throw new Error(`Invalid add-on ID(s): ${addonValidation.invalidIds.join(", ")}`);
+      }
+      for (const addon of addonValidation.addons) {
+        addonsSubtotal += addon.price;
+        addonLabels.push(`${addon.name} (₹${addon.price.toLocaleString("en-IN")})`);
       }
     }
 
@@ -3353,11 +3402,14 @@ export const dbRepo = {
     const endM = (endMins % 60).toString().padStart(2, "0");
     const endTime = `${endH}:${endM}`;
 
+    // Verify package existence to avoid Prisma foreign key violation if a service ID was passed as packageId
     let packageSubtotal = 0;
+    let verifiedPackageId: string | null = null;
     if (data.packageId) {
       const selectedPkg = await this.getPackageById(data.packageId);
       if (selectedPkg) {
         packageSubtotal = selectedPkg.price;
+        verifiedPackageId = selectedPkg.id;
       }
     }
 
@@ -3365,7 +3417,7 @@ export const dbRepo = {
       validServices.reduce(
         (sum, s) => sum + (s?.discountedPrice ?? s?.price ?? 0),
         0
-      ) + packageSubtotal;
+      ) + packageSubtotal + addonsSubtotal;
 
     let discountAmount = 0;
     if (data.couponCode) {
@@ -3425,6 +3477,18 @@ export const dbRepo = {
     const depositAmount = Math.min(totalAmount, totalDepositRequired);
     const remainingAmount = Math.max(0, totalAmount - depositAmount);
     const depositType = depositAmount > 0 ? (depositAmount === totalAmount ? "FULL" : "PARTIAL") : "NO_DEPOSIT";
+
+    let finalNotes = data.notes || null;
+    let finalBridalRequirements = data.bridalRequirements || null;
+    if (addonLabels.length > 0) {
+      const addonSummary = `Add-ons: ${addonLabels.join(" + ")}`;
+      finalBridalRequirements = finalBridalRequirements
+        ? `${finalBridalRequirements} | ${addonSummary}`
+        : addonSummary;
+      finalNotes = finalNotes
+        ? `${finalNotes} | ${addonSummary}`
+        : addonSummary;
+    }
 
     const isBridalBooking = Boolean(
       data.bridalRequirements ||
@@ -3527,8 +3591,8 @@ export const dbRepo = {
               internalNotes: data.internalNotes || null,
               paymentStatus: PaymentStatus.UNPAID,
               couponCode: data.couponCode || null,
-              notes: data.notes || null,
-              packageId: data.packageId || null,
+              notes: finalNotes || null,
+              packageId: verifiedPackageId || null,
               appointmentServices: {
                 create: validServices.map((s) => ({
                   serviceId: s!.id,
@@ -3652,14 +3716,14 @@ export const dbRepo = {
       paymentMethod: null,
       couponCode: data.couponCode || null,
       holdToken: data.holdToken || null,
-      notes: data.notes || null,
-      bridalRequirements: data.bridalRequirements || null,
+      notes: finalNotes || null,
+      bridalRequirements: finalBridalRequirements || null,
       adminNotes: null,
       internalNotes: data.internalNotes || null,
       createdAt: now,
       updatedAt: now,
       serviceIds: validServices.map((s) => s!.id),
-      packageId: data.packageId || null,
+      packageId: verifiedPackageId || null,
     };
 
     memoryDb.appointments.unshift(newAppointment);
@@ -3688,6 +3752,8 @@ export const dbRepo = {
 
     return {
       ...newAppointment,
+      customerName: data.customerName,
+      customerPhone: data.customerPhone,
       customerProfile: { ...profile, user },
       staff: staffMember ? { ...staffMember, user: { name: staffMember.name } } : null,
       appointmentServices: validServices.map((s) => ({
@@ -3795,6 +3861,8 @@ export const dbRepo = {
 
     return {
       ...a,
+      customerName: user?.name || (a as any).customerName,
+      customerPhone: user?.phone || (a as any).customerPhone,
       customerProfile: prof ? { ...prof, user } : null,
       staff: stf ? { ...stf, user: { name: stf.name } } : null,
       appointmentServices: srvs.map((s) => ({
@@ -5036,6 +5104,7 @@ export const dbRepo = {
       allowOfflineRecording: settings.allowOfflineRecording,
       minAdvanceAmount: settings.minAdvanceAmount ?? 1000,
       maxAdvanceAmount: settings.maxAdvanceAmount ?? 2500,
+      defaultAdvanceAmount: settings.defaultAdvanceAmount ?? 1000,
       suggestedAdvanceOptions: settings.suggestedAdvanceOptions || [1000, 1500, 2000, 2500],
       allowCustomerSelectAdvance: settings.allowCustomerSelectAdvance ?? true,
       belowMinPolicy: settings.belowMinPolicy || "CAP_AT_SERVICE_PRICE",
@@ -5089,6 +5158,11 @@ export const dbRepo = {
       if (!hasLiveKey || !hasLiveSecret) {
         throw new Error(
           "Cannot switch to Live Mode until Live Key ID and Live Key Secret have been configured and verified."
+        );
+      }
+      if (current.environment !== "LIVE" && !input.confirmedLiveActivation) {
+        throw new Error(
+          "Explicit admin confirmation is required before activating Live Mode."
         );
       }
     }
@@ -5153,21 +5227,25 @@ export const dbRepo = {
     const targetEnv = env || settings.environment || "TEST";
     const isTest = targetEnv === "TEST";
 
-    const keyId = isTest ? settings.testKeyId : settings.liveKeyId;
-    const keySecret = decryptSecret(
-      isTest ? settings.testKeySecretEncrypted : settings.liveKeySecretEncrypted
-    );
-    const webhookSecret = decryptSecret(
-      isTest ? settings.testWebhookSecretEncrypted : settings.liveWebhookSecretEncrypted
-    );
+    // Strictly read credentials from server environment variables
+    const envKeyId = process.env.RAZORPAY_KEY_ID || "";
+    const envKeySecret = process.env.RAZORPAY_KEY_SECRET || "";
+    const envWebhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || "";
+
+    // In unit testing environment (Vitest), allow mock fallbacks so standalone tests pass without external env
+    const isVitest = process.env.NODE_ENV === "test";
+    const testFallbackKey = isVitest ? "rzp_test_lalganj_mock" : "";
+    const testFallbackSecret = isVitest ? "mock_secret_lalganj_2026" : "";
+    const testFallbackWebhook = isVitest ? "mock_webhook_secret_lalganj_2026" : "";
+
+    const keyId = envKeyId || (isTest ? (settings.testKeyId || testFallbackKey) : (settings.liveKeyId || ""));
+    const keySecret = envKeySecret || (isTest ? (decryptSecret(settings.testKeySecretEncrypted) || testFallbackSecret) : (decryptSecret(settings.liveKeySecretEncrypted) || ""));
+    const webhookSecret = envWebhookSecret || (isTest ? (decryptSecret(settings.testWebhookSecretEncrypted) || testFallbackWebhook) : (decryptSecret(settings.liveWebhookSecretEncrypted) || ""));
 
     return {
-      keyId: keyId || (isTest ? (process.env.RAZORPAY_KEY_ID || "rzp_test_lalganj_mock") : ""),
-      keySecret:
-        keySecret || (isTest ? (process.env.RAZORPAY_KEY_SECRET || "mock_secret_lalganj_2026") : ""),
-      webhookSecret:
-        webhookSecret ||
-        (isTest ? (process.env.RAZORPAY_WEBHOOK_SECRET || "mock_webhook_secret_lalganj_2026") : ""),
+      keyId,
+      keySecret,
+      webhookSecret,
       environment: targetEnv,
       isEnabled: settings.isEnabled,
       enableOnlinePayments: settings.enableOnlinePayments,
@@ -5177,12 +5255,26 @@ export const dbRepo = {
       allowOfflineRecording: settings.allowOfflineRecording,
       minAdvanceAmount: settings.minAdvanceAmount ?? 1000,
       maxAdvanceAmount: settings.maxAdvanceAmount ?? 2500,
+      defaultAdvanceAmount: settings.defaultAdvanceAmount ?? 1000,
       suggestedAdvanceOptions: settings.suggestedAdvanceOptions || [1000, 1500, 2000, 2500],
       allowCustomerSelectAdvance: settings.allowCustomerSelectAdvance ?? true,
       belowMinPolicy: settings.belowMinPolicy || "CAP_AT_SERVICE_PRICE",
       displayName: settings.displayName || "The Jawed Habib Salon - Lalganj",
       currency: settings.currency || "INR",
     };
+  },
+
+  async getRazorpayOrder(orderId: string) {
+    if (!orderId) return null;
+    if (await canUsePrisma()) {
+      try {
+        const order = await (prisma as any).razorpayOrderRecord.findUnique({
+          where: { orderId },
+        });
+        if (order) return order;
+      } catch {}
+    }
+    return memoryDb.razorpayOrders.find((o) => o.orderId === orderId) || null;
   },
 
   async recordRazorpayOrder(data: {
@@ -5242,6 +5334,27 @@ export const dbRepo = {
   }) {
     const apt = await this.getAppointmentById(data.appointmentId);
     if (!apt) throw new Error("Appointment not found");
+
+    // Strict mode isolation check
+    if (data.razorpayOrderId) {
+      const order = await this.getRazorpayOrder(data.razorpayOrderId);
+      if (order) {
+        if (order.environment === "LIVE" && data.razorpayPaymentId.startsWith("pay_test_")) {
+          return {
+            success: false,
+            error: "Security Violation: Cannot verify a LIVE booking order with a TEST payment instrument.",
+            payment: null as any,
+          };
+        }
+        if (order.environment === "TEST" && data.razorpayPaymentId.startsWith("pay_live_")) {
+          return {
+            success: false,
+            error: "Security Violation: Cannot verify a TEST booking order with a LIVE payment instrument.",
+            payment: null as any,
+          };
+        }
+      }
+    }
 
     const now = new Date();
     const status = data.signatureValid
@@ -5369,6 +5482,40 @@ export const dbRepo = {
     initiatedBy: string;
     razorpayRefundId?: string;
   }) {
+    if (await canUsePrisma()) {
+      try {
+        const txDb = await prisma.paymentRecord.findFirst({
+          where: { OR: [{ id: data.transactionId }, { transactionRef: data.transactionId }] },
+        });
+        if (txDb) {
+          const refundRec = await prisma.$transaction(async (ptx) => {
+            const rec = await ptx.paymentRefundRecord.create({
+              data: {
+                transactionId: txDb.id,
+                appointmentId: txDb.appointmentId,
+                razorpayRefundId: data.razorpayRefundId || `rfnd_${Date.now()}`,
+                amount: data.amount,
+                currency: "INR",
+                reason: data.reason,
+                status: "PROCESSED",
+                initiatedBy: data.initiatedBy,
+              },
+            });
+            await ptx.paymentRecord.update({
+              where: { id: txDb.id },
+              data: { status: PaymentTransactionStatus.REFUNDED },
+            });
+            await ptx.appointment.update({
+              where: { id: txDb.appointmentId },
+              data: { paymentStatus: PaymentStatus.REFUNDED, status: AppointmentStatus.CANCELLED },
+            });
+            return rec;
+          });
+          if (refundRec) return refundRec;
+        }
+      } catch {}
+    }
+
     const tx = memoryDb.payments.find(
       (p) => p.id === data.transactionId || p.transactionRef === data.transactionId
     );
@@ -5430,6 +5577,51 @@ export const dbRepo = {
   async recordOfflinePayment(data: AdminOfflinePaymentInput) {
     const apt = await this.getAppointmentById(data.appointmentId);
     if (!apt) throw new Error("Appointment not found");
+
+    if (await canUsePrisma()) {
+      try {
+        await prisma.$transaction(async (ptx) => {
+          await ptx.offlinePaymentRecord.create({
+            data: {
+              appointmentId: data.appointmentId,
+              amount: data.amount,
+              paymentMethod: data.paymentMethod,
+              transactionReference: data.transactionReference || `OFFLINE_${Date.now()}`,
+              receivedDate: data.receivedDate,
+              recordedBy: data.recordedBy,
+              notes: data.notes || null,
+            },
+          });
+
+          await ptx.paymentRecord.create({
+            data: {
+              appointmentId: data.appointmentId,
+              transactionRef: data.transactionReference || `OFFLINE_${Date.now()}`,
+              gateway: data.paymentMethod === "CASH" ? PaymentGateway.MANUAL_CASH : PaymentGateway.MANUAL_UPI,
+              gatewayPaymentId: data.transactionReference || null,
+              amount: data.amount,
+              currency: "INR",
+              status: PaymentTransactionStatus.SUCCESS,
+            },
+          });
+
+          const currentApt = await ptx.appointment.findUnique({ where: { id: data.appointmentId } });
+          if (currentApt) {
+            const currentRem = currentApt.remainingAmount ?? (currentApt.totalAmount - (currentApt.depositAmount || 0));
+            const newRem = Math.max(0, currentRem - data.amount);
+            const newPaymentStatus = newRem === 0 ? PaymentStatus.PAID : PaymentStatus.PARTIALLY_PAID;
+            await ptx.appointment.update({
+              where: { id: data.appointmentId },
+              data: {
+                remainingAmount: newRem,
+                paymentStatus: newPaymentStatus,
+                paymentMethod: data.paymentMethod,
+              },
+            });
+          }
+        });
+      } catch {}
+    }
 
     const now = new Date();
     const record: MemoryOfflinePayment = {
@@ -7346,6 +7538,101 @@ export const dbRepo = {
       return true;
     }
     return false;
+  },
+
+  // -----------------------------------------------------------
+  // ADMIN SESSIONS & PERSISTENCE
+  // -----------------------------------------------------------
+  async recordAdminSession(data: {
+    userId: string;
+    token: string;
+    ipAddress?: string | null;
+    userAgent?: string | null;
+    expiresAt: Date;
+  }) {
+    if (await canUsePrisma()) {
+      try {
+        return await prisma.adminSession.create({
+          data: {
+            userId: data.userId,
+            token: data.token,
+            ipAddress: data.ipAddress || null,
+            userAgent: data.userAgent || null,
+            expiresAt: data.expiresAt,
+          },
+        });
+      } catch {}
+    }
+    const memSession = {
+      id: `sess_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      userId: data.userId,
+      token: data.token,
+      ipAddress: data.ipAddress || null,
+      userAgent: data.userAgent || null,
+      expiresAt: data.expiresAt,
+      createdAt: new Date(),
+      lastActiveAt: new Date(),
+    };
+    memoryDb.adminSessions.push(memSession);
+    return memSession;
+  },
+
+  async revokeAdminSession(token: string) {
+    if (await canUsePrisma()) {
+      try {
+        await prisma.adminSession.deleteMany({ where: { token } });
+        return true;
+      } catch {}
+    }
+    const idx = memoryDb.adminSessions.findIndex((s) => s.token === token);
+    if (idx !== -1) {
+      memoryDb.adminSessions.splice(idx, 1);
+      return true;
+    }
+    return true;
+  },
+
+  async isSessionActive(token: string): Promise<boolean> {
+    if (await canUsePrisma()) {
+      try {
+        const session = await prisma.adminSession.findFirst({
+          where: { token, expiresAt: { gt: new Date() } },
+        });
+        return Boolean(session);
+      } catch {}
+    }
+    const session = memoryDb.adminSessions.find(
+      (s) => s.token === token && s.expiresAt > new Date()
+    );
+    return Boolean(session);
+  },
+
+  // -----------------------------------------------------------
+  // SERVICE ADDONS
+  // -----------------------------------------------------------
+  async getServiceAddons(activeOnly: boolean = true) {
+    if (await canUsePrisma()) {
+      try {
+        const addons = await prisma.serviceAddon.findMany({
+          where: activeOnly ? { isActive: true } : {},
+          orderBy: { price: "asc" },
+        });
+        if (addons && addons.length > 0) return addons;
+      } catch {}
+    }
+    return BRIDAL_ADDONS.map((a) => ({
+      id: a.id,
+      name: a.name,
+      slug: a.id,
+      description: a.description,
+      price: a.price,
+      durationMinutes: a.durationMinutes ?? 15,
+      isPopular: a.isPopular ?? false,
+      isActive: true,
+      serviceId: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }));
   },
 
   _memoryDb: memoryDb,

@@ -2,12 +2,32 @@ import { NextRequest, NextResponse } from "next/server";
 import { resetPasswordSchema } from "@/lib/validation/schemas";
 import { hashPassword } from "@/lib/auth/password";
 import dbRepo from "@/lib/db/repo";
+import { checkRateLimit } from "@/lib/security/rate-limit";
+import logger, { maskPhone } from "@/lib/logging/logger";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
   try {
+    const clientIp =
+      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      req.headers.get("x-real-ip") ||
+      "127.0.0.1";
+
+    const rateLimit = checkRateLimit(`reset_pw_ip_${clientIp}`, 5, 10 * 60 * 1000);
+    if (!rateLimit.allowed) {
+      logger.warn("auth.reset_password.rate_limited", { clientIp });
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Too many password reset attempts. Please wait a few minutes before trying again.",
+          retryAfterMs: rateLimit.resetInMs,
+        },
+        { status: 429 }
+      );
+    }
+
     const body = await req.json();
     const result = resetPasswordSchema.safeParse(body);
 
@@ -48,12 +68,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    logger.info("auth.reset_password.success", {
+      target: maskPhone(phoneOrEmail),
+    });
+
     return NextResponse.json({
       success: true,
       message: "Password has been successfully updated. You may now log in with your new credentials.",
     });
   } catch (error) {
-    console.error("Reset password error:", error);
+    logger.error("auth.reset_password.failed", error);
     return NextResponse.json(
       { success: false, error: "Internal server error" },
       { status: 500 }

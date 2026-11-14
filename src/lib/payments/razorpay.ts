@@ -145,8 +145,17 @@ export async function createRazorpayOrder(
     if (res.ok) {
       return (await res.json()) as RazorpayOrderResponse;
     }
-  } catch {
-    // Fall back to safe deterministic mock order creation
+
+    const errData = await res.json().catch(() => null);
+    const errMessage = errData?.error?.description || `Razorpay rejected order creation with status ${res.status}`;
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(errMessage);
+    }
+  } catch (err) {
+    if (process.env.NODE_ENV === "production") {
+      throw err;
+    }
+    // Fall back to safe deterministic mock order creation in test / sandboxed environments
   }
 
   // Fallback for test / sandboxed environments
@@ -263,7 +272,16 @@ export async function createRazorpayRefund(
     if (res.ok) {
       return (await res.json()) as RazorpayRefundResponse;
     }
-  } catch {
+
+    const errData = await res.json().catch(() => null);
+    const errMessage = errData?.error?.description || `Razorpay refund failed with status ${res.status}`;
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(errMessage);
+    }
+  } catch (err) {
+    if (process.env.NODE_ENV === "production") {
+      throw err;
+    }
     // Fall back to mock response for test environment
   }
 

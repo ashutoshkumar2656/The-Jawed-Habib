@@ -715,6 +715,63 @@ async function main() {
     });
   }
 
+  // 14. Service Add-ons
+  const serviceAddonsList = [
+    {
+      name: "Airbrush HD Makeup Upgrade",
+      slug: "addon_airbrush_hd",
+      price: 1500,
+      durationMinutes: 20,
+      description: "Silicon-based ultra-fine mist airbrush finish for 18-hour sweatproof wear.",
+      isPopular: true,
+      isActive: true,
+    },
+    {
+      name: "Pre-Bridal Glow Facial & D-Tan",
+      slug: "addon_pre_bridal_facial",
+      price: 2200,
+      durationMinutes: 45,
+      description: "Hydrating brightening facial with botanical skin clarifying mask.",
+      isPopular: true,
+      isActive: true,
+    },
+    {
+      name: "Luxury Designer Saree Draping & Styling",
+      slug: "addon_saree_draping",
+      price: 800,
+      durationMinutes: 25,
+      description: "Precision pleating and security pin placement for Banarasi or Kanjeevaram sarees.",
+      isPopular: false,
+      isActive: true,
+    },
+    {
+      name: "Bridal Nail Extensions & French Artistry",
+      slug: "addon_nail_extensions",
+      price: 1800,
+      durationMinutes: 40,
+      description: "Acrylic/gel nail extensions with glitter ombré and Swarovski crystals.",
+      isPopular: true,
+      isActive: true,
+    },
+    {
+      name: "24K Gold Radiant Foil Boost",
+      slug: "addon_gold_radiant_foil",
+      price: 1200,
+      durationMinutes: 15,
+      description: "Pure 24K edible gold leaf infusion for luminous glass-skin radiance.",
+      isPopular: false,
+      isActive: true,
+    },
+  ];
+
+  for (const addon of serviceAddonsList) {
+    await prisma.serviceAddon.upsert({
+      where: { slug: addon.slug },
+      update: addon,
+      create: addon,
+    });
+  }
+
   console.log("✅ Database seeded successfully for The Jawed Habib Salon – Lalganj!");
 }
 

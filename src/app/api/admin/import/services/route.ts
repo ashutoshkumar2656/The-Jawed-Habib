@@ -156,7 +156,7 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   try {
-    const auth = checkAdminAuth(req);
+    const auth = checkAdminAuth(req, ["SUPER_ADMIN", "ADMIN"]);
     if (!auth.authorized) {
       return NextResponse.json({ success: false, error: auth.error }, { status: auth.status });
     }

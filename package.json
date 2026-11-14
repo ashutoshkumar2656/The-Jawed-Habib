@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "node -r ./scripts/patch-mkdir.js node_modules/next/dist/bin/next build",
     "postinstall": "prisma generate",
     "start": "next start",
     "lint": "next lint",
@@ -13,6 +13,7 @@
     "test:watch": "vitest",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
+    "prisma:deploy": "prisma migrate deploy",
     "prisma:seed": "tsx prisma/seed.ts"
   },
   "dependencies": {

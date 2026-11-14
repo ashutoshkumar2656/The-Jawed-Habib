@@ -67,6 +67,7 @@ Before initiating deployment, ensure you have active accounts with:
 | `DATABASE_URL` | `postgresql://...` | Neon PostgreSQL pooled URL |
 | `JWT_SECRET` | `32+_random_character_string` | Secret for customer and admin session tokens |
 | `JWT_EXPIRES_IN` | `7d` | Token expiry duration |
+| `PAYMENT_ENCRYPTION_KEY` | `32+_random_character_string` | Master key for AES-256-GCM encryption of payment secrets |
 | `ADMIN_DEFAULT_EMAIL` | `admin@jawedhabib-lalganj.com` | Default admin user |
 | `ADMIN_DEFAULT_PASSWORD` | `YourSecureAdminPass2026!` | Initial admin seed password |
 | `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` | `jawed-habib-lalganj` | Cloudinary public cloud name |
@@ -102,3 +103,25 @@ Once the production URL is live, perform these smoke tests:
 - [ ] Visit `/admin/login`, log in with initial admin credentials, and verify `/admin/dashboard` loads live statistics.
 - [ ] Download the CSV reports file from `/admin/analytics` and verify structure.
 - [ ] Confirm `/sitemap.xml` and `/robots.txt` resolve with 200 OK.
+- [ ] In Admin Panel (`/admin/settings/payment-gateway`), verify Razorpay credentials and test connection.
+
+---
+
+## 7. Step 6: Rollback & Disaster Recovery Strategy
+
+In the event of an unexpected regression or deployment emergency:
+
+### 1. Application Layer Rollback (Vercel Instant Rollback)
+1. Open the **Vercel Dashboard → Deployments**.
+2. Locate the previous stable production deployment.
+3. Click the three dots `...` and select **Promote to Production** (or **Instant Rollback**).
+4. Edge CDN redirects 100% of global traffic to the previous deployment within seconds.
+
+### 2. Database Rollback (Neon Point-in-Time Restore)
+1. If data corruption or schema mismatch occurs, sign in to the **Neon Console**.
+2. Go to **Branches** and create a point-in-time branch timestamped immediately prior to deployment:
+   ```bash
+   neon branches create --name rollback-pre-deploy --as-of "2026-11-13T12:00:00Z"
+   ```
+3. Update `DATABASE_URL` in Vercel to point to the restored branch.
+4. **Never** execute `prisma migrate reset` on production databases. All production migrations are version-controlled and applied via `npm run prisma:deploy`.

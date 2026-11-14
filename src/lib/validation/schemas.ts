@@ -43,6 +43,35 @@ export const profileUpdateSchema = z.object({
 // -------------------------------------------------------------
 // Appointment Schemas
 // -------------------------------------------------------------
+
+/**
+ * Normalizes user-submitted appointment time from either 12-hour AM/PM format
+ * (e.g. "11:30 AM", "01:00 PM", "2:30 pm") or 24-hour format (e.g. "11:30", "14:30")
+ * into canonical 24-hour "HH:MM" format.
+ */
+export function normalizeTimeTo24h(timeStr: string): string {
+  if (!timeStr || typeof timeStr !== "string") return timeStr;
+  const trimmed = timeStr.trim();
+  const match12 = trimmed.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (match12) {
+    let hours = parseInt(match12[1], 10);
+    const minutes = match12[2];
+    const period = match12[3].toUpperCase();
+    if (period === "PM" && hours < 12) hours += 12;
+    if (period === "AM" && hours === 12) hours = 0;
+    return `${hours.toString().padStart(2, "0")}:${minutes}`;
+  }
+  const match24 = trimmed.match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+  if (match24) {
+    const hours = parseInt(match24[1], 10);
+    const minutes = match24[2];
+    if (hours >= 0 && hours <= 23 && parseInt(minutes, 10) >= 0 && parseInt(minutes, 10) <= 59) {
+      return `${hours.toString().padStart(2, "0")}:${minutes}`;
+    }
+  }
+  return trimmed;
+}
+
 export const appointmentBookingSchema = z.object({
   customerName: z.string().min(2, "Name must be at least 2 characters"),
   customerPhone: z.string().regex(phoneRegex, "Please enter a valid 10-digit Indian phone number"),
@@ -53,7 +82,12 @@ export const appointmentBookingSchema = z.object({
   appointmentDate: z.string().refine((val) => !isNaN(Date.parse(val)), {
     message: "Valid appointment date is required",
   }),
-  startTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Invalid time format (HH:MM)"),
+  startTime: z
+    .string()
+    .transform(normalizeTimeTo24h)
+    .refine((val) => /^([01]\d|2[0-3]):([0-5]\d)$/.test(val), {
+      message: "Invalid time format (HH:MM or hh:mm AM/PM required)",
+    }),
   couponCode: z.string().optional().nullable(),
   holdToken: z.string().optional().nullable(),
   notes: z.string().max(500, "Notes cannot exceed 500 characters").optional().or(z.literal("")),
@@ -69,13 +103,20 @@ export const appointmentRescheduleSchema = z.object({
   appointmentDate: z.string().refine((val) => !isNaN(Date.parse(val)), {
     message: "Valid appointment date is required",
   }),
-  startTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Invalid time format (HH:MM)"),
+  startTime: z
+    .string()
+    .transform(normalizeTimeTo24h)
+    .refine((val) => /^([01]\d|2[0-3]):([0-5]\d)$/.test(val), {
+      message: "Invalid time format (HH:MM or hh:mm AM/PM required)",
+    }),
   staffId: z.string().optional().nullable(),
   rescheduleReason: z.string().max(300).optional(),
+  customerPhone: z.string().optional(),
 });
 
 export const appointmentCancelSchema = z.object({
   reason: z.string().min(5, "Please give a brief reason for cancellation (min 5 characters)").max(300),
+  customerPhone: z.string().optional(),
 });
 
 export const availabilityQuerySchema = z.object({
@@ -121,6 +162,7 @@ export const adminRazorpaySettingsSchema = z.object({
   // Advance Payment Business Policy Settings
   minAdvanceAmount: z.number().min(0, "Minimum advance must be >= 0").default(1000).optional(),
   maxAdvanceAmount: z.number().min(0, "Maximum advance must be >= 0").default(2500).optional(),
+  defaultAdvanceAmount: z.number().min(0, "Default advance must be >= 0").default(1000).optional(),
   suggestedAdvanceOptions: z.array(z.number()).default([1000, 1500, 2000, 2500]).optional(),
   allowCustomerSelectAdvance: z.boolean().default(true).optional(),
   belowMinPolicy: z.enum(["CAP_AT_SERVICE_PRICE", "CHARGE_FULL_PRICE"]).default("CAP_AT_SERVICE_PRICE").optional(),
@@ -132,6 +174,7 @@ export const adminRazorpaySettingsSchema = z.object({
   liveKeyId: z.string().optional().nullable(),
   liveKeySecret: z.string().optional().nullable(),
   liveWebhookSecret: z.string().optional().nullable(),
+  confirmedLiveActivation: z.boolean().optional(),
 });
 
 export const adminRefundSchema = z.object({

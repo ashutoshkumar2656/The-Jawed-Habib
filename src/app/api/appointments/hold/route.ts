@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import dbRepo from "@/lib/db/repo";
 import { z } from "zod";
+import { normalizeTimeTo24h } from "@/lib/validation/schemas";
 
 export const runtime = "nodejs";
 
@@ -8,8 +9,18 @@ export const dynamic = "force-dynamic";
 
 const holdRequestSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD"),
-  startTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Start time must be HH:MM"),
-  endTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "End time must be HH:MM"),
+  startTime: z
+    .string()
+    .transform(normalizeTimeTo24h)
+    .refine((val) => /^([01]\d|2[0-3]):([0-5]\d)$/.test(val), {
+      message: "Start time must be HH:MM or hh:mm AM/PM",
+    }),
+  endTime: z
+    .string()
+    .transform(normalizeTimeTo24h)
+    .refine((val) => /^([01]\d|2[0-3]):([0-5]\d)$/.test(val), {
+      message: "End time must be HH:MM or hh:mm AM/PM",
+    }),
   serviceIds: z.array(z.string()).min(1),
   customerPhone: z.string().optional(),
 });

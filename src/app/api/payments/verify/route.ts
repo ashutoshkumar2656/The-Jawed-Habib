@@ -67,6 +67,12 @@ export async function POST(req: NextRequest) {
     });
 
     if (!isSignatureValid) {
+      console.warn("[PAYMENT_SIGNATURE_VERIFICATION_FAILED]", {
+        appointmentId,
+        orderId,
+        paymentId,
+        timestamp: new Date().toISOString(),
+      });
       await dbRepo.verifyRazorpayPayment({
         appointmentId,
         razorpayOrderId: orderId,
@@ -111,7 +117,10 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (error: any) {
-    console.error("Payment verification route error:", error);
+    console.error("[PAYMENT_VERIFICATION_ROUTE_ERROR]", {
+      message: error?.message || "Internal error during payment verification.",
+      timestamp: new Date().toISOString(),
+    });
     return NextResponse.json(
       { success: false, error: error.message || "Internal error during payment verification." },
       { status: 500 }

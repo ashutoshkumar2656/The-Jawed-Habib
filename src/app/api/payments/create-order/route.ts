@@ -31,6 +31,10 @@ export async function POST(req: NextRequest) {
     const validation = paymentOrderSchema.safeParse(body);
 
     if (!validation.success) {
+      console.warn("[PAYMENT_ORDER_VALIDATION_FAILURE]", {
+        errors: validation.error.flatten().fieldErrors,
+        clientIp,
+      });
       return NextResponse.json(
         {
           success: false,
@@ -181,7 +185,10 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (error: any) {
-    console.error("Payment create-order error:", error);
+    console.error("[RAZORPAY_ORDER_CREATION_ERROR]", {
+      message: error?.message || "Failed to initialize payment gateway order",
+      timestamp: new Date().toISOString(),
+    });
     return NextResponse.json(
       { success: false, error: error.message || "Failed to initialize payment gateway order" },
       { status: 500 }

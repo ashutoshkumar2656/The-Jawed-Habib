@@ -196,33 +196,8 @@ const FALLBACK_BRIDAL_PACKAGES: BridalService[] = [
   },
 ];
 
-export interface BridalAddonItem {
-  id: string;
-  name: string;
-  price: number;
-  description: string;
-}
-
-export const BRIDAL_ADDONS: BridalAddonItem[] = [
-  {
-    id: "addon_hair_ext",
-    name: "Hair Extensions & Padding Architecture",
-    price: 1000,
-    description: "Volume boost and durable pin-up structure for regal hairstyles",
-  },
-  {
-    id: "addon_family_glam",
-    name: "Mother / Sister Family Party Makeup",
-    price: 1500,
-    description: "HD base and elegant hairstyle for 1 close family member",
-  },
-  {
-    id: "addon_draping_master",
-    name: "Special Saree & Dupatta Pleating",
-    price: 500,
-    description: "Wrinkle-free ironed pleats with anti-slip magnetic pins",
-  },
-];
+import { BRIDAL_ADDONS, type BridalAddonItem } from "@/lib/constants/bridal";
+export { BRIDAL_ADDONS, type BridalAddonItem };
 
 export function BridalBookingExperience() {
   const { toast } = useToast();
@@ -315,13 +290,22 @@ export function BridalBookingExperience() {
         const res = await fetch(`/api/appointments/availability?date=${selectedDate}`);
         if (res.ok) {
           const data = await res.json();
-          if (data.success && Array.isArray(data.slots) && data.slots.length > 0) {
-            const openTimes = data.slots
+          const rawSlots = data?.data?.slots || data?.slots;
+          if (data.success && Array.isArray(rawSlots) && rawSlots.length > 0) {
+            const openTimes = rawSlots
               .filter((s: { isAvailable: boolean }) => s.isAvailable)
               .map((s: { time: string }) => s.time);
             if (isMounted && openTimes.length > 0) {
-              setAvailableSlots(openTimes);
-              setSelectedTime((prevTime) => (openTimes.includes(prevTime) ? prevTime : openTimes[0]));
+              const formattedSlots = openTimes.map((t: string) => {
+                if (t.includes("AM") || t.includes("PM")) return t;
+                const [hStr, mStr] = t.split(":");
+                const h = parseInt(hStr, 10);
+                const period = h >= 12 ? "PM" : "AM";
+                const h12 = h % 12 || 12;
+                return `${h12.toString().padStart(2, "0")}:${mStr} ${period}`;
+              });
+              setAvailableSlots(formattedSlots);
+              setSelectedTime((prevTime) => (formattedSlots.includes(prevTime) ? prevTime : formattedSlots[0]));
               return;
             }
           }
@@ -468,7 +452,7 @@ export function BridalBookingExperience() {
           customerPhone: cleanPhone,
           customerEmail: customerEmail.trim(),
           serviceIds: [selectedPackage.id],
-          packageId: selectedPackage.id,
+          packageId: null,
           appointmentDate: selectedDate,
           startTime: selectedTime,
           advanceAmount: currentAdvance,
@@ -487,7 +471,8 @@ export function BridalBookingExperience() {
 
       const aptData = await aptRes.json();
       if (!aptRes.ok || !aptData.success) {
-        throw new Error(aptData.error || "Failed to create reservation slot. Please select another time or date.");
+        const errorMsg = aptData.error || (aptData.details && Object.values(aptData.details).flat()[0]) || "Failed to create reservation slot. Please select another time or date.";
+        throw new Error(errorMsg);
       }
 
       const createdAppointment = aptData.data;
@@ -541,7 +526,25 @@ export function BridalBookingExperience() {
         });
 
         if (!scriptLoaded) {
-          throw new Error("Payment gateway SDK failed to load. Please check your network connection.");
+          setConfirmedBooking({
+            bookingReference: createdAppointment.appointmentNumber,
+            customerName: customerName.trim(),
+            serviceName: selectedPackage.name,
+            appointmentDate: selectedDate,
+            startTime: selectedTime,
+            advancePaid: 0,
+            remainingBalance: totalPrice,
+            eventDate: eventDate || undefined,
+            weddingVenue: weddingVenue || undefined,
+            addons: selectedAddonIds.map((id) => BRIDAL_ADDONS.find((a) => a.id === id)?.name).filter(Boolean) as string[],
+          });
+          toast({
+            type: "info",
+            title: "Appointment Reserved (Pay at Salon Counter)",
+            message: "Online payment gateway is temporarily unreachable. Your appointment slot is securely reserved under Ref #" + createdAppointment.appointmentNumber + "! Please pay the advance at the salon counter.",
+          });
+          scrollToId("booking-confirmation-view");
+          return;
         }
       }
 

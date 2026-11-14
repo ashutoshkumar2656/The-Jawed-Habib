@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -240,6 +241,16 @@ export function PaymentsManagementHub() {
         </div>
 
         <div className="flex items-center gap-2.5">
+          <Link href="/admin/settings/payment-gateway">
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs h-9 gap-1.5 border-salon-gold/40 text-salon-gold hover:border-salon-gold hover:text-white"
+            >
+              <CreditCard className="h-3.5 w-3.5" />
+              <span>Gateway Settings</span>
+            </Button>
+          </Link>
           <Button
             variant="gold"
             size="sm"

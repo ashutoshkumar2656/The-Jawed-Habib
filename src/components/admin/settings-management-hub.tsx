@@ -426,7 +426,7 @@ export function SettingsManagementHub() {
                   <ShieldCheck className="h-3.5 w-3.5" />
                   <span>Test Connection</span>
                 </Button>
-                <Link href="/admin/settings/razorpay">
+                <Link href="/admin/settings/payment-gateway">
                   <Button variant="outline" size="sm" className="text-xs h-8 gap-1 border-zinc-700">
                     <ExternalLink className="h-3.5 w-3.5" />
                     <span>Dedicated Gateway Portal</span>

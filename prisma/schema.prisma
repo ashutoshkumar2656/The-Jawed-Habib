@@ -109,6 +109,7 @@ model User {
   staff           Staff?
   notifications   Notification[]
   auditLogs       AuditLog[]
+  adminSessions   AdminSession[]
 
   @@index([phone])
   @@index([email])
@@ -138,6 +139,25 @@ model CustomerProfile {
 
   @@index([userId])
   @@index([totalSpent])
+}
+
+// -------------------------------------------------------------
+// 2b. AdminSession (Persistent Session Storage & Revocation)
+// -------------------------------------------------------------
+model AdminSession {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token        String   @unique
+  ipAddress    String?
+  userAgent    String?
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  lastActiveAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
 }
 
 // -------------------------------------------------------------
@@ -230,6 +250,7 @@ model Service {
   staffServices       StaffService[]
   appointmentServices AppointmentService[]
   transformations     Transformation[]
+  addons              ServiceAddon[]
 
   @@index([categoryId])
   @@index([slug])
@@ -237,6 +258,30 @@ model Service {
   @@index([allowOnlineBooking, isActive])
   @@index([categoryId, isActive])
   @@index([isFeatured, isActive])
+}
+
+// -------------------------------------------------------------
+// 6b. ServiceAddon (Authoritative Add-On Catalog)
+// -------------------------------------------------------------
+model ServiceAddon {
+  id              String             @id @default(cuid())
+  name            String
+  slug            String             @unique
+  description     String?
+  price           Float
+  durationMinutes Int                @default(15)
+  isPopular       Boolean            @default(false)
+  isActive        Boolean            @default(true)
+  serviceId       String?
+  service         Service?           @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  appointmentAddons AppointmentAddon[]
+
+  @@index([slug])
+  @@index([isActive])
+  @@index([serviceId])
 }
 
 // -------------------------------------------------------------
@@ -322,9 +367,13 @@ model Appointment {
   updatedAt           DateTime             @updatedAt
 
   appointmentServices AppointmentService[]
+  appointmentAddons   AppointmentAddon[]
   packageId           String?
   package             Package?             @relation(fields: [packageId], references: [id], onDelete: SetNull)
   payments            PaymentRecord[]
+  offlinePayments     OfflinePaymentRecord[]
+  razorpayOrders      RazorpayOrderRecord[]
+  refunds             PaymentRefundRecord[]
 
   @@index([customerProfileId])
   @@index([staffId])
@@ -353,6 +402,23 @@ model AppointmentService {
 
   @@index([appointmentId])
   @@index([serviceId])
+}
+
+// -------------------------------------------------------------
+// 10b. AppointmentAddon (Itemized Add-ons in Bookings)
+// -------------------------------------------------------------
+model AppointmentAddon {
+  id            String       @id @default(cuid())
+  appointmentId String
+  appointment   Appointment  @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  addonId       String
+  addon         ServiceAddon @relation(fields: [addonId], references: [id], onDelete: Restrict)
+  price         Float
+  createdAt     DateTime     @default(now())
+
+  @@unique([appointmentId, addonId])
+  @@index([appointmentId])
+  @@index([addonId])
 }
 
 // -------------------------------------------------------------
@@ -715,9 +781,10 @@ model PaymentGatewaySettingRecord {
 // 31. RazorpayOrderRecord
 // -------------------------------------------------------------
 model RazorpayOrderRecord {
-  id            String   @id @default(cuid())
-  orderId       String   @unique
+  id            String      @id @default(cuid())
+  orderId       String      @unique
   appointmentId String
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
   amountInPaise Int
   currency      String   @default("INR")
   purpose       String   @default("ADVANCE_DEPOSIT")
@@ -734,9 +801,10 @@ model RazorpayOrderRecord {
 // 32. PaymentRefundRecord
 // -------------------------------------------------------------
 model PaymentRefundRecord {
-  id               String   @id @default(cuid())
+  id               String      @id @default(cuid())
   transactionId    String
   appointmentId    String
+  appointment      Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
   razorpayRefundId String?
   amount           Float
   currency         String   @default("INR")
@@ -772,8 +840,9 @@ model WebhookEventRecord {
 // 34. OfflinePaymentRecord
 // -------------------------------------------------------------
 model OfflinePaymentRecord {
-  id                   String   @id @default(cuid())
+  id                   String      @id @default(cuid())
   appointmentId        String
+  appointment          Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
   amount               Float
   paymentMethod        String   // CASH, UPI, CARD
   transactionReference String?

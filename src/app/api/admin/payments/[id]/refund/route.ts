@@ -3,6 +3,7 @@ import dbRepo from "@/lib/db/repo";
 import { adminRefundSchema } from "@/lib/validation/schemas";
 import { checkAdminAuth } from "@/lib/auth/rbac";
 import { createRazorpayRefund } from "@/lib/payments/razorpay";
+import logger from "@/lib/logging/logger";
 
 export const runtime = "nodejs";
 
@@ -13,7 +14,7 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
-    const auth = checkAdminAuth(req);
+    const auth = checkAdminAuth(req, ["SUPER_ADMIN", "ADMIN"]);
     if (!auth.authorized) {
       return NextResponse.json({ success: false, error: auth.error }, { status: auth.status });
     }
@@ -95,6 +96,12 @@ export async function POST(
       initiatedBy: `${auth.user?.name || "Admin"} (${auth.user?.role || "ADMIN"})`,
       razorpayRefundId: rzpRefundId,
     });
+
+    logger.audit(
+      "payment.refund_processed",
+      { userId: auth.user?.userId, role: auth.user?.role },
+      { transactionId: tx.id, amount: refundAmount, reason, razorpayRefundId: rzpRefundId }
+    );
 
     return NextResponse.json({
       success: true,

@@ -14,6 +14,10 @@ This document defines all environment variables used by the application, their s
 | `DIRECT_URL` | Optional | `postgresql://...` | Direct unpooled database connection string for Prisma migrations. |
 | `JWT_SECRET` | **Yes** | `[32+ character random string]` | Private key for signing customer and administrator JWT session cookies. |
 | `JWT_EXPIRES_IN` | Optional | `7d` | Token expiration lifespan (default 7 days). |
+| `PAYMENT_ENCRYPTION_KEY` | **Yes** | `[32+ character random string]` | Master secret for deriving 256-bit AES-GCM encryption key for payment credentials. |
+| `RAZORPAY_KEY_ID` | Optional | `rzp_test_...` | Server environment fallback for Razorpay Key ID (overridden by DB settings). |
+| `RAZORPAY_KEY_SECRET` | Optional | `[Secret Key]` | Server environment fallback for Razorpay Key Secret. Never expose to client. |
+| `RAZORPAY_WEBHOOK_SECRET` | Optional | `[Webhook Secret]` | Server environment fallback for Razorpay Webhook Secret. Never expose to client. |
 | `ADMIN_DEFAULT_EMAIL`| Optional | `admin@jawedhabib-lalganj.in` | Default seed email for super admin account. |
 | `ADMIN_DEFAULT_PASSWORD`| Optional | `[SecurePassword123!]` | Default seed password for super admin account. |
 | `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` | Optional | `jawed-habib-lalganj` | Cloudinary public cloud name for client-side image transformations. |

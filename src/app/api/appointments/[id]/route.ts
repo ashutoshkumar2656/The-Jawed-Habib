@@ -2,9 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { appointmentCancelSchema, appointmentRescheduleSchema } from "@/lib/validation/schemas";
 import dbRepo from "@/lib/db/repo";
 import { getRequestSessionUser } from "@/lib/auth/session";
+import { isStaffOrAdmin } from "@/lib/auth/rbac";
+import logger, { maskPhone } from "@/lib/logging/logger";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+function getAppointmentCustomerPhone(apt: any): string | null {
+  return (
+    apt?.customerProfile?.user?.phone ||
+    apt?.customerPhone ||
+    apt?.phone ||
+    null
+  );
+}
 
 export async function GET(
   req: NextRequest,
@@ -19,12 +30,32 @@ export async function GET(
       );
     }
 
+    const session = getRequestSessionUser(req);
+    const isStaff = session ? isStaffOrAdmin(session.role) : false;
+    const isOwner =
+      session &&
+      ((apt.customerProfile && session.userId === apt.customerProfile.userId) ||
+        session.phone === getAppointmentCustomerPhone(apt));
+
+    // If neither staff nor owner, sanitize sensitive internal/admin notes
+    if (!isStaff && !isOwner) {
+      const sanitizedApt = {
+        ...apt,
+        internalNotes: undefined,
+        adminNotes: undefined,
+      };
+      return NextResponse.json({
+        success: true,
+        data: sanitizedApt,
+      });
+    }
+
     return NextResponse.json({
       success: true,
       data: apt,
     });
   } catch (error) {
-    console.error("Appointment detail API error:", error);
+    logger.error("appointment.get.failed", error, { appointmentId: params.id });
     return NextResponse.json(
       { success: false, error: "Internal server error" },
       { status: 500 }
@@ -37,9 +68,47 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   try {
+    const apt = await dbRepo.getAppointmentById(params.id);
+    if (!apt) {
+      return NextResponse.json(
+        { success: false, error: "Appointment not found" },
+        { status: 404 }
+      );
+    }
+
     const session = getRequestSessionUser(req);
+    const aptPhone = getAppointmentCustomerPhone(apt);
+    const isStaff = session ? isStaffOrAdmin(session.role) : false;
+    const isOwner =
+      session &&
+      ((apt.customerProfile && session.userId === apt.customerProfile.userId) ||
+        (aptPhone && session.phone === aptPhone));
+
     const body = await req.json();
     const action = body.action; // "cancel" or "reschedule"
+
+    // Verify caller has permission to modify this appointment
+    const callerProvidedPhone = body.customerPhone
+      ? String(body.customerPhone).replace(/\D/g, "").slice(-10)
+      : null;
+    const normalizedAptPhone = aptPhone ? aptPhone.replace(/\D/g, "").slice(-10) : null;
+    const phoneMatches = callerProvidedPhone && normalizedAptPhone && callerProvidedPhone === normalizedAptPhone;
+
+    if (!isStaff && !isOwner && !phoneMatches) {
+      logger.warn("appointment.unauthorized_modification_attempt", {
+        appointmentId: params.id,
+        appointmentNumber: apt.appointmentNumber,
+        action,
+        hasSession: Boolean(session),
+      });
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Access denied. Valid customer phone verification or login is required to modify this appointment.",
+        },
+        { status: 403 }
+      );
+    }
 
     if (action === "cancel") {
       const parsed = appointmentCancelSchema.safeParse(body);
@@ -60,6 +129,15 @@ export async function PATCH(
           parsed.data.reason,
           session?.userId
         );
+
+        logger.info("booking.cancelled", {
+          appointmentId: params.id,
+          appointmentNumber: apt.appointmentNumber,
+          customerPhone: maskPhone(aptPhone),
+          cancelledBy: session?.userId || "CUSTOMER_PHONE_VERIFIED",
+          reason: parsed.data.reason,
+        });
+
         return NextResponse.json({
           success: true,
           message: "Appointment successfully cancelled.",
@@ -95,6 +173,16 @@ export async function PATCH(
           parsed.data.staffId,
           parsed.data.rescheduleReason
         );
+
+        logger.info("booking.rescheduled", {
+          appointmentId: params.id,
+          appointmentNumber: apt.appointmentNumber,
+          customerPhone: maskPhone(aptPhone),
+          newDate: parsed.data.appointmentDate,
+          newTime: parsed.data.startTime,
+          rescheduledBy: session?.userId || "CUSTOMER_PHONE_VERIFIED",
+        });
+
         return NextResponse.json({
           success: true,
           message: "Appointment successfully rescheduled.",
@@ -119,7 +207,7 @@ export async function PATCH(
       { status: 400 }
     );
   } catch (error) {
-    console.error("Appointment PATCH API error:", error);
+    logger.error("appointment.patch.failed", error, { appointmentId: params.id });
     return NextResponse.json(
       { success: false, error: "Internal server error" },
       { status: 500 }
