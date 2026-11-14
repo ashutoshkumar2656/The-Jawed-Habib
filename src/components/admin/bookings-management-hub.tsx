@@ -33,6 +33,8 @@ import {
   AlertTriangle,
   MessageCircle,
   UserCheck,
+  Mail,
+  RefreshCw,
 } from "lucide-react";
 import { BRAND_CONFIG } from "@/lib/constants/brand";
 import { format } from "date-fns";
@@ -136,6 +138,51 @@ export function BookingsManagementHub() {
   } | null>(null);
 
   const [feedback, setFeedback] = React.useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  // Email Notification Outbox State for Selected Booking
+  const [bookingEmailLogs, setBookingEmailLogs] = React.useState<any[]>([]);
+  const [loadingEmailLogs, setLoadingEmailLogs] = React.useState(false);
+  const [retryingEmailId, setRetryingEmailId] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!selectedBooking?.id) {
+      setBookingEmailLogs([]);
+      return;
+    }
+    setLoadingEmailLogs(true);
+    fetch(`/api/admin/emails?appointmentId=${selectedBooking.id}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.data)) {
+          setBookingEmailLogs(data.data);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingEmailLogs(false));
+  }, [selectedBooking?.id]);
+
+  const handleRetryEmail = async (emailLogId: string) => {
+    setRetryingEmailId(emailLogId);
+    try {
+      const res = await fetch("/api/admin/emails", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emailLogId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setFeedback({ type: "success", text: "Email re-queued successfully!" });
+        const refresh = await fetch(`/api/admin/emails?appointmentId=${selectedBooking?.id}`).then((r) => r.json());
+        if (refresh.success && Array.isArray(refresh.data)) setBookingEmailLogs(refresh.data);
+      } else {
+        setFeedback({ type: "error", text: data.error || "Retry failed" });
+      }
+    } catch {
+      setFeedback({ type: "error", text: "Failed to communicate with email retry service" });
+    } finally {
+      setRetryingEmailId(null);
+    }
+  };
 
   // Fetch Bookings with caching and debounced parameters
   const fetchBookings = React.useCallback(async () => {
@@ -1290,6 +1337,86 @@ export function BookingsManagementHub() {
                     <span>Payment Status:</span>
                     <span>{selectedBooking.paymentStatus}</span>
                   </div>
+                </div>
+              </div>
+
+              {/* Transactional Email Delivery Outbox Status */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-zinc-400 font-semibold uppercase text-[10px] tracking-wider flex items-center gap-1.5">
+                    <Mail className="h-3 w-3 text-salon-gold" />
+                    Customer Email Delivery Outbox
+                  </span>
+                  <span className="text-[11px] text-zinc-400 font-mono">
+                    {selectedBooking.customerEmail || selectedBooking.customerProfile?.user?.email || "No email on record"}
+                  </span>
+                </div>
+
+                <div className="p-3 rounded-lg bg-salon-black border border-zinc-800 space-y-2">
+                  {loadingEmailLogs ? (
+                    <div className="text-[11px] text-zinc-500 py-2 text-center">Loading delivery records...</div>
+                  ) : bookingEmailLogs.length === 0 ? (
+                    <div className="text-[11px] text-zinc-500 py-1.5 text-center">
+                      No transactional emails dispatched for this booking yet.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {bookingEmailLogs.map((log: any) => {
+                        const isSuccess = ["ACCEPTED", "SENT"].includes(log.deliveryStatus);
+                        const isFailed = log.deliveryStatus === "FAILED";
+                        return (
+                          <div
+                            key={log.id}
+                            className="p-2.5 rounded bg-zinc-950/80 border border-zinc-800/80 flex flex-col gap-1.5"
+                          >
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span className="font-semibold text-white">
+                                {log.eventType.replace(/_/g, " ")}
+                              </span>
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                    isSuccess
+                                      ? "bg-emerald-950/60 text-emerald-400 border border-emerald-800/60"
+                                      : isFailed
+                                      ? "bg-rose-950/60 text-rose-400 border border-rose-800/60"
+                                      : "bg-amber-950/60 text-amber-400 border border-amber-800/60"
+                                  }`}
+                                >
+                                  {log.deliveryStatus}
+                                </span>
+                                {isFailed && (
+                                  <button
+                                    onClick={() => handleRetryEmail(log.id)}
+                                    disabled={retryingEmailId === log.id}
+                                    className="px-2 py-0.5 rounded bg-salon-gold/20 text-salon-gold hover:bg-salon-gold/30 text-[10px] font-semibold flex items-center gap-1 border border-salon-gold/40"
+                                  >
+                                    <RefreshCw className={`h-2.5 w-2.5 ${retryingEmailId === log.id ? "animate-spin" : ""}`} />
+                                    <span>Retry</span>
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between text-[10px] text-zinc-400 font-mono">
+                              <span>Recipient: {log.customerEmail}</span>
+                              <span>
+                                {log.sentAt
+                                  ? `Sent: ${new Date(log.sentAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}`
+                                  : `Attempts: ${log.attemptCount || 1}`}
+                              </span>
+                            </div>
+
+                            {log.lastError && (
+                              <div className="text-[10px] text-rose-400 bg-rose-950/30 p-1.5 rounded border border-rose-900/40">
+                                Error: {log.lastError}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

@@ -62,6 +62,7 @@ export function FloatingContact() {
 
       {/* Trigger Button */}
       <button
+        type="button"
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
           "flex h-12 w-12 items-center justify-center rounded-full border border-salon-gold/60 bg-gradient-to-tr from-zinc-950 via-zinc-900 to-black text-salon-gold shadow-[0_0_20px_rgba(198,165,107,0.35)] hover:scale-105 active:scale-95 transition-all duration-300",

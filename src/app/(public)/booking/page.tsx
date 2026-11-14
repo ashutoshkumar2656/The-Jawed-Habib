@@ -6,7 +6,8 @@ import { Breadcrumbs } from "@/components/shared/breadcrumbs";
 import { BridalBookingExperience } from "@/components/public/bridal-booking-experience";
 import { Crown, Sparkles, Phone, MessageCircle } from "lucide-react";
 import { BRAND_CONFIG } from "@/lib/constants/brand";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils/cn";
 
 export default function BookingPage() {
   return (
@@ -40,25 +41,23 @@ export default function BookingPage() {
                 href={`https://wa.me/91${BRAND_CONFIG.contact.whatsappPhone}?text=Hello%20The%20Jawed%20Habib%20Salon%20Lalganj%2C%20I%20have%20a%20question%20regarding%20bridal%20booking.`}
                 target="_blank"
                 rel="noopener noreferrer"
+                className={cn(
+                  buttonVariants({ variant: "outline", size: "default" }),
+                  "gap-2 border-emerald-600/60 text-emerald-400 hover:bg-emerald-950/40 text-xs font-semibold"
+                )}
               >
-                <Button
-                  variant="outline"
-                  size="default"
-                  className="gap-2 border-emerald-600/60 text-emerald-400 hover:bg-emerald-950/40 text-xs font-semibold"
-                >
-                  <MessageCircle className="h-4 w-4" />
-                  <span>WhatsApp Bridal Desk</span>
-                </Button>
+                <MessageCircle className="h-4 w-4" />
+                <span>WhatsApp Bridal Desk</span>
               </a>
-              <a href={`tel:+91${BRAND_CONFIG.contact.primaryPhone}`}>
-                <Button
-                  variant="secondary"
-                  size="default"
-                  className="gap-2 border border-zinc-700 text-xs text-zinc-300 hover:text-white"
-                >
-                  <Phone className="h-3.5 w-3.5 text-salon-gold" />
-                  <span>Call +91 {BRAND_CONFIG.contact.primaryPhone}</span>
-                </Button>
+              <a
+                href={`tel:+91${BRAND_CONFIG.contact.primaryPhone}`}
+                className={cn(
+                  buttonVariants({ variant: "secondary", size: "default" }),
+                  "gap-2 border border-zinc-700 text-xs text-zinc-300 hover:text-white"
+                )}
+              >
+                <Phone className="h-3.5 w-3.5 text-salon-gold" />
+                <span>Call +91 {BRAND_CONFIG.contact.primaryPhone}</span>
               </a>
             </div>
           </div>

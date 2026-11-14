@@ -3,9 +3,10 @@
 import * as React from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Breadcrumbs } from "@/components/shared/breadcrumbs";
+import { cn } from "@/lib/utils/cn";
 import {
   Sparkles,
   Scissors,
@@ -330,11 +331,12 @@ export default function ConsultationPage() {
                   </div>
 
                   <div className="pt-3 border-t border-zinc-800">
-                    <Link href={rec.link}>
-                      <Button variant="goldOutline" size="sm" className="w-full gap-1.5 text-xs">
-                        <Calendar className="h-3.5 w-3.5" />
-                        <span>Book This Treatment</span>
-                      </Button>
+                    <Link
+                      href={rec.link}
+                      className={cn(buttonVariants({ variant: "goldOutline", size: "sm" }), "w-full gap-1.5 text-xs")}
+                    >
+                      <Calendar className="h-3.5 w-3.5" />
+                      <span>Book This Treatment</span>
                     </Link>
                   </div>
                 </div>
@@ -365,16 +367,18 @@ export default function ConsultationPage() {
             Walk into our Lalganj salon at 1st Floor, Tinpulwa Chowk or reserve a 15-minute chair consultation with our senior stylists. We examine scalp health, texture, and facial geometry before starting any service.
           </p>
           <div className="pt-2 flex flex-wrap justify-center gap-4">
-            <Link href="/booking">
-              <Button variant="gold" size="lg" className="gap-2 text-xs font-semibold">
-                <Calendar className="h-4 w-4" />
-                <span>Book Salon Appointment</span>
-              </Button>
+            <Link
+              href="/booking"
+              className={cn(buttonVariants({ variant: "gold", size: "lg" }), "gap-2 text-xs font-semibold")}
+            >
+              <Calendar className="h-4 w-4" />
+              <span>Book Salon Appointment</span>
             </Link>
-            <a href={`tel:+91${BRAND_CONFIG.contact.primaryPhone}`}>
-              <Button variant="secondary" size="lg" className="text-xs">
-                Call Concierge: +91 {BRAND_CONFIG.contact.primaryPhone}
-              </Button>
+            <a
+              href={`tel:+91${BRAND_CONFIG.contact.primaryPhone}`}
+              className={cn(buttonVariants({ variant: "secondary", size: "lg" }), "text-xs")}
+            >
+              Call Concierge: +91 {BRAND_CONFIG.contact.primaryPhone}
             </a>
           </div>
         </div>

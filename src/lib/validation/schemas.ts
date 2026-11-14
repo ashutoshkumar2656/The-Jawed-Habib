@@ -207,12 +207,13 @@ export const reviewSubmitSchema = z.object({
 // Enquiry & Contact
 // -------------------------------------------------------------
 export const enquirySchema = z.object({
-  name: z.string().min(2, "Name is required"),
+  name: z.string().min(2, "Name is required (at least 2 characters)").max(100),
   phone: z.string().regex(phoneRegex, "Valid 10-digit Indian phone number is required"),
   email: z.string().email("Valid email required").optional().or(z.literal("")),
-  serviceInterest: z.string().optional(),
+  serviceInterest: z.string().optional().nullable(),
   type: z.enum(["GENERAL", "SERVICE", "CONSULTATION", "BRIDAL"]).optional().default("GENERAL"),
-  message: z.string().min(10, "Please provide a brief message (min 10 characters)").max(1500),
+  source: z.string().optional().default("Website Contact Form"),
+  message: z.string().min(3, "Please provide a brief message (min 3 characters)").max(2000),
   // Anti-spam honeypot field (should remain empty)
   _honey: z.string().max(0, "Spam detected").optional(),
 });
@@ -521,8 +522,11 @@ export const adminFaqSchema = z.object({
 });
 
 export const adminEnquiryUpdateSchema = z.object({
-  status: z.enum(["NEW", "CONTACTED", "SCHEDULED", "RESOLVED", "SPAM"]),
-  adminNotes: z.string().max(1000).optional().nullable(),
+  status: z.enum(["NEW", "CONTACTED", "SCHEDULED", "RESOLVED", "SPAM"]).optional(),
+  adminNotes: z.string().max(2000).optional().nullable(),
+  emailStatus: z.enum(["PENDING", "SENT", "FAILED", "SIMULATED"]).optional(),
+  googleSheetsStatus: z.enum(["PENDING", "SYNCED", "FAILED", "DISABLED"]).optional(),
+  lastError: z.string().optional().nullable(),
 });
 
 export const adminUserCreateSchema = z.object({

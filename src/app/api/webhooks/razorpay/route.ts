@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import dbRepo from "@/lib/db/repo";
+import emailService from "@/lib/email/service";
 import { verifyRazorpayWebhookSignature } from "@/lib/payments/razorpay";
 
 export const runtime = "nodejs";
@@ -79,7 +80,7 @@ export async function POST(req: NextRequest) {
           const notes = orderPayload.notes || {};
           const appointmentId = notes.appointmentId;
           if (appointmentId && paymentPayload?.id) {
-            await dbRepo.verifyRazorpayPayment({
+            const verified = await dbRepo.verifyRazorpayPayment({
               appointmentId,
               razorpayOrderId: orderPayload.id,
               razorpayPaymentId: paymentPayload.id,
@@ -88,6 +89,12 @@ export async function POST(req: NextRequest) {
               amountInPaise: orderPayload.amount,
               method: paymentPayload.method,
             });
+            emailService
+              .sendPaymentReceipt({
+                appointmentId,
+                transactionId: verified?.payment?.id,
+              })
+              .catch(() => {});
           }
         }
         break;
@@ -99,7 +106,7 @@ export async function POST(req: NextRequest) {
           const notes = payment.notes || {};
           const appointmentId = notes.appointmentId;
           if (appointmentId) {
-            await dbRepo.verifyRazorpayPayment({
+            const verified = await dbRepo.verifyRazorpayPayment({
               appointmentId,
               razorpayOrderId: payment.order_id,
               razorpayPaymentId: payment.id,
@@ -108,6 +115,12 @@ export async function POST(req: NextRequest) {
               amountInPaise: payment.amount,
               method: payment.method,
             });
+            emailService
+              .sendPaymentReceipt({
+                appointmentId,
+                transactionId: verified?.payment?.id,
+              })
+              .catch(() => {});
           }
         }
         break;

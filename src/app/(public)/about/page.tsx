@@ -3,9 +3,10 @@ import Image from "next/image";
 import Link from "next/link";
 import { Metadata } from "next";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Breadcrumbs } from "@/components/shared/breadcrumbs";
 import { SectionHeader } from "@/components/shared/section-header";
+import { cn } from "@/lib/utils/cn";
 import {
   Scissors,
   Sparkles,
@@ -299,11 +300,12 @@ export default function AboutPage() {
           </div>
 
           <div className="pt-2">
-            <Link href="/gallery">
-              <Button variant="outline" size="sm" className="gap-2">
-                <span>View Full Salon Gallery</span>
-                <ArrowRight className="h-4 w-4 text-salon-gold" />
-              </Button>
+            <Link
+              href="/gallery"
+              className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-2")}
+            >
+              <span>View Full Salon Gallery</span>
+              <ArrowRight className="h-4 w-4 text-salon-gold" />
             </Link>
           </div>
         </section>
@@ -317,17 +319,19 @@ export default function AboutPage() {
             Located at 1st Floor, Tinpulwa Chowk, Above Killer Showroom, Opposite Manglam Mart. Open Monday to Sunday, 10:00 AM – 10:00 PM.
           </p>
           <div className="pt-2 flex flex-wrap justify-center gap-4">
-            <Link href="/booking">
-              <Button variant="gold" size="lg" className="gap-2">
-                <Calendar className="h-4 w-4" />
-                <span>Book Your Appointment Online</span>
-              </Button>
+            <Link
+              href="/booking"
+              className={cn(buttonVariants({ variant: "gold", size: "lg" }), "gap-2")}
+            >
+              <Calendar className="h-4 w-4" />
+              <span>Book Your Appointment Online</span>
             </Link>
-            <Link href="/services">
-              <Button variant="outline" size="lg" className="gap-2">
-                <span>Explore Full Services Menu</span>
-                <ArrowRight className="h-4 w-4 text-salon-gold" />
-              </Button>
+            <Link
+              href="/services"
+              className={cn(buttonVariants({ variant: "outline", size: "lg" }), "gap-2")}
+            >
+              <span>Explore Full Services Menu</span>
+              <ArrowRight className="h-4 w-4 text-salon-gold" />
             </Link>
           </div>
         </section>

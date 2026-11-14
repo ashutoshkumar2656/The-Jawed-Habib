@@ -638,7 +638,7 @@ export default function AdminReportsPage() {
                         </td>
                         <td className="p-3 text-zinc-300 max-w-xs truncate">{row.service}</td>
                         <td className="p-3">
-                          <div>{row.appointmentDate}</div>
+                          <div>{String(row.appointmentDate || "")}</div>
                           <div className="text-[10px] text-zinc-500">{row.appointmentTime}</div>
                         </td>
                         <td className="p-3 text-right font-medium text-white">

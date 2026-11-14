@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { BRAND_CONFIG } from "@/lib/constants/brand";
 import { siteConfig } from "@/config/site";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { BrandLogo } from "@/components/ui/brand-logo";
 import { cn } from "@/lib/utils/cn";
 
@@ -48,6 +48,33 @@ export function Header() {
   React.useEffect(() => {
     setMobileMenuOpen(false);
   }, [pathname]);
+
+  const handleNavClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
+    if (href.startsWith("/#") && pathname === "/") {
+      e.preventDefault();
+      const id = href.replace("/#", "");
+      const el = document.getElementById(id);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth" });
+        window.history.pushState(null, "", href);
+      }
+    }
+  };
+
+  const handleMobileNavClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
+    setMobileMenuOpen(false);
+    if (href.startsWith("/#") && pathname === "/") {
+      e.preventDefault();
+      const id = href.replace("/#", "");
+      const el = document.getElementById(id);
+      if (el) {
+        setTimeout(() => {
+          el.scrollIntoView({ behavior: "smooth" });
+          window.history.pushState(null, "", href);
+        }, 150);
+      }
+    }
+  };
 
   const announcementText = cms.header_announcement || "✨ Wedding Season Booking Open • Reserve Your Bridal Suite in Lalganj with Instant Advance Confirmation";
   const ctaLabel = cms.header_cta_label || "Book Appointment";
@@ -127,6 +154,7 @@ export function Header() {
                 <Link
                   key={item.href}
                   href={item.href}
+                  onClick={(e) => handleNavClick(e, item.href)}
                   className={cn(
                     "text-xs uppercase font-medium tracking-wider transition-colors py-1 relative",
                     isActive
@@ -149,26 +177,26 @@ export function Header() {
               href={`https://wa.me/91${BRAND_CONFIG.contact.whatsappPhone}?text=Hello%20The%20Jawed%20Habib%20Salon%20Lalganj%2C%20I%20would%20like%20to%20consult%20regarding%20bridal%2Fhair%20services.`}
               target="_blank"
               rel="noopener noreferrer"
+              className={cn(
+                buttonVariants({ variant: "ghost", size: "sm" }),
+                "gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 hover:bg-emerald-950/30 border border-emerald-800/40"
+              )}
             >
-              <Button
-                variant="ghost"
-                size="sm"
-                className="gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 hover:bg-emerald-950/30 border border-emerald-800/40"
-              >
-                <MessageCircle className="h-3.5 w-3.5" />
-                <span>WhatsApp Consult</span>
-              </Button>
+              <MessageCircle className="h-3.5 w-3.5" />
+              <span>WhatsApp Consult</span>
             </a>
-            <Link href={ctaLink}>
-              <Button variant="gold" size="default" className="gap-2 shadow-md">
-                <Calendar className="h-4 w-4" />
-                <span>{ctaLabel}</span>
-              </Button>
+            <Link
+              href={ctaLink}
+              className={cn(buttonVariants({ variant: "gold", size: "default" }), "gap-2 shadow-md")}
+            >
+              <Calendar className="h-4 w-4" />
+              <span>{ctaLabel}</span>
             </Link>
           </div>
 
           {/* Mobile Menu Toggle Button */}
           <button
+            type="button"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className="flex h-10 w-10 items-center justify-center rounded-lg border border-zinc-800 text-zinc-300 hover:text-white lg:hidden"
             aria-label={mobileMenuOpen ? "Close navigation menu" : "Open navigation menu"}
@@ -210,7 +238,7 @@ export function Header() {
                 <Link
                   key={item.href}
                   href={item.href}
-                  onClick={() => setMobileMenuOpen(false)}
+                  onClick={(e) => handleMobileNavClick(e, item.href)}
                   className={cn(
                     "text-sm font-medium py-2 px-3 rounded-lg transition-colors flex items-center justify-between",
                     isActive
@@ -244,21 +272,25 @@ export function Header() {
             </div>
 
             <div className="pt-4 border-t border-zinc-800 flex flex-col gap-3">
-              <Link href={ctaLink} onClick={() => setMobileMenuOpen(false)}>
-                <Button variant="gold" className="w-full justify-center gap-2">
-                  <Calendar className="h-4 w-4" />
-                  <span>Book Appointment</span>
-                </Button>
+              <Link
+                href={ctaLink}
+                onClick={() => setMobileMenuOpen(false)}
+                className={cn(buttonVariants({ variant: "gold" }), "w-full justify-center gap-2")}
+              >
+                <Calendar className="h-4 w-4" />
+                <span>Book Appointment</span>
               </Link>
               <a
                 href={`https://wa.me/91${BRAND_CONFIG.contact.whatsappPhone}?text=Hello%20The%20Jawed%20Habib%20Salon%20Lalganj%2C%20I%20would%20like%20to%20consult%20regarding%20bridal%2Fhair%20services.`}
                 target="_blank"
                 rel="noopener noreferrer"
+                className={cn(
+                  buttonVariants({ variant: "secondary" }),
+                  "w-full justify-center gap-2 text-xs text-emerald-400 border border-emerald-800/40"
+                )}
               >
-                <Button variant="secondary" className="w-full justify-center gap-2 text-xs text-emerald-400 border border-emerald-800/40">
-                  <MessageCircle className="h-3.5 w-3.5" />
-                  <span>WhatsApp Consultation</span>
-                </Button>
+                <MessageCircle className="h-3.5 w-3.5" />
+                <span>WhatsApp Consultation</span>
               </a>
 
               <div className="pt-3 border-t border-zinc-800/80 space-y-2 text-xs text-zinc-400">

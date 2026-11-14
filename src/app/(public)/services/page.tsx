@@ -4,10 +4,11 @@ import * as React from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { Breadcrumbs } from "@/components/shared/breadcrumbs";
+import { cn } from "@/lib/utils/cn";
 import {
   Scissors,
   Sparkles,
@@ -99,6 +100,26 @@ export default function ServicesPage() {
     };
   }, []);
 
+  // Sync active category with URL hash or query param on client mount
+  React.useEffect(() => {
+    if (typeof window !== "undefined" && categories.length > 0) {
+      const hash = window.location.hash.replace("#", "").toLowerCase().trim();
+      const params = new URLSearchParams(window.location.search);
+      const catParam = (params.get("category") || hash || "").toLowerCase().trim();
+      if (catParam && catParam !== "all") {
+        const match = categories.find(
+          (c) =>
+            c.id.toLowerCase() === catParam ||
+            c.slug.toLowerCase() === catParam ||
+            c.name.toLowerCase() === catParam
+        );
+        if (match) {
+          setActiveCategory(match.id);
+        }
+      }
+    }
+  }, [categories]);
+
   // Filter services by active category and search query
   const filteredServices = React.useMemo(() => {
     return services.filter((s) => {
@@ -146,6 +167,7 @@ export default function ServicesPage() {
           {/* Dynamic Category Tabs */}
           <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
             <button
+              type="button"
               onClick={() => setActiveCategory("all")}
               className={`px-4 py-2 rounded-xl text-xs uppercase tracking-wider font-semibold transition-all ${
                 activeCategory === "all"
@@ -158,6 +180,7 @@ export default function ServicesPage() {
 
             {categories.map((cat) => (
               <button
+                type="button"
                 key={cat.id}
                 onClick={() => setActiveCategory(cat.id)}
                 className={`px-4 py-2 rounded-xl text-xs uppercase tracking-wider font-semibold transition-all ${
@@ -183,6 +206,7 @@ export default function ServicesPage() {
             />
             {searchQuery && (
               <button
+                type="button"
                 onClick={() => setSearchQuery("")}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white"
               >
@@ -315,6 +339,7 @@ export default function ServicesPage() {
                       </div>
 
                       <button
+                        type="button"
                         onClick={() => setSelectedService(service)}
                         className="text-xs font-semibold text-zinc-400 hover:text-white underline underline-offset-4 transition-colors"
                       >
@@ -323,11 +348,12 @@ export default function ServicesPage() {
                     </div>
 
                     <div className="pt-1">
-                      <Link href={`/booking?service=${service.id}`} className="block w-full">
-                        <Button variant="gold" size="sm" className="w-full gap-2 text-xs font-bold">
-                          <Calendar className="h-3.5 w-3.5" />
-                          <span>Book This Service Online</span>
-                        </Button>
+                      <Link
+                        href={`/booking?service=${service.id}`}
+                        className={cn(buttonVariants({ variant: "gold", size: "sm" }), "w-full gap-2 text-xs font-bold")}
+                      >
+                        <Calendar className="h-3.5 w-3.5" />
+                        <span>Book This Service Online</span>
                       </Link>
                     </div>
                   </div>
@@ -399,11 +425,12 @@ export default function ServicesPage() {
                 >
                   Close
                 </Button>
-                <Link href={`/booking?service=${selectedService.id}`}>
-                  <Button variant="gold" className="text-xs gap-2">
-                    <Calendar className="h-4 w-4" />
-                    <span>Book This Service Online</span>
-                  </Button>
+                <Link
+                  href={`/booking?service=${selectedService.id}`}
+                  className={cn(buttonVariants({ variant: "gold" }), "text-xs gap-2")}
+                >
+                  <Calendar className="h-4 w-4" />
+                  <span>Book This Service Online</span>
                 </Link>
               </div>
             </div>
@@ -423,11 +450,12 @@ export default function ServicesPage() {
               All prices shown are indicative starting rates. Final rates for chemical color, balayage, keratin, and bridal styling are confirmed during your unhurried consultation based on hair length, density, and chosen products.
             </p>
           </div>
-          <Link href="/pricing" className="flex-shrink-0">
-            <Button variant="outline" size="lg" className="gap-2">
-              <span>View Transparent Price List</span>
-              <Info className="h-4 w-4 text-salon-gold" />
-            </Button>
+          <Link
+            href="/pricing"
+            className={cn(buttonVariants({ variant: "outline", size: "lg" }), "gap-2 flex-shrink-0")}
+          >
+            <span>View Transparent Price List</span>
+            <Info className="h-4 w-4 text-salon-gold" />
           </Link>
         </div>
 
@@ -441,16 +469,18 @@ export default function ServicesPage() {
             Located at 1st Floor, Tinpulwa Chowk. Open all 7 days from 10:00 AM to 10:00 PM. Book online or call our concierge desk.
           </p>
           <div className="pt-2 flex flex-wrap justify-center gap-4">
-            <Link href="/booking">
-              <Button variant="gold" size="lg" className="gap-2">
-                <Calendar className="h-4 w-4" />
-                <span>Book Appointment Online</span>
-              </Button>
+            <Link
+              href="/booking"
+              className={cn(buttonVariants({ variant: "gold", size: "lg" }), "gap-2")}
+            >
+              <Calendar className="h-4 w-4" />
+              <span>Book Appointment Online</span>
             </Link>
-            <Link href="/consultation">
-              <Button variant="outline" size="lg" className="gap-2">
-                <span>Start Free Consultation</span>
-              </Button>
+            <Link
+              href="/consultation"
+              className={cn(buttonVariants({ variant: "outline", size: "lg" }), "gap-2")}
+            >
+              <span>Start Free Consultation</span>
             </Link>
           </div>
         </div>

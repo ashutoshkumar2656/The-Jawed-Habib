@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { appointmentBookingSchema } from "@/lib/validation/schemas";
 import dbRepo from "@/lib/db/repo";
+import emailService from "@/lib/email/service";
 import { getRequestSessionUser } from "@/lib/auth/session";
 import { AppointmentStatus, BookingSource } from "@prisma/client";
 import { BRAND_CONFIG } from "@/lib/constants/brand";
@@ -107,7 +108,7 @@ export async function POST(req: NextRequest) {
     // 5. Sanitize text inputs
     const sanitizedName = sanitizeInput(customerName);
     const sanitizedNotes = sanitizeInput(notes);
-    const sanitizedEmail = customerEmail ? sanitizeInput(customerEmail) : undefined;
+    const sanitizedEmail = customerEmail ? sanitizeInput(customerEmail).trim().toLowerCase() : undefined;
 
     try {
       const appointment = await dbRepo.createAppointment({
@@ -126,6 +127,11 @@ export async function POST(req: NextRequest) {
         advanceAmount,
         source: (source as BookingSource) || BookingSource.ONLINE_WEBSITE,
         selectedAddons,
+      });
+
+      // 5b. Asynchronously dispatch transactional booking confirmation email
+      emailService.sendBookingConfirmation(appointment.id).catch((emailErr) => {
+        console.warn("[BOOKING_CONFIRMATION_EMAIL_ERROR]", emailErr?.message);
       });
 
       // 6. Generate verified WhatsApp click-to-chat URL

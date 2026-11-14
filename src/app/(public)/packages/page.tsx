@@ -3,8 +3,9 @@
 import * as React from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Breadcrumbs } from "@/components/shared/breadcrumbs";
+import { cn } from "@/lib/utils/cn";
 import {
   Sparkles,
   Calendar,
@@ -190,14 +191,15 @@ export default function PackagesPage() {
                   </div>
 
                   <div className="pt-6 border-t border-zinc-800/80 mt-6">
-                    <Link href={`/booking?package=${pkg.id}`} className="block w-full">
-                      <Button
-                        variant={pkg.isFeatured ? "gold" : "goldOutline"}
-                        className="w-full gap-2 text-xs font-bold"
-                      >
-                        <Calendar className="h-4 w-4" />
-                        <span>Book This Package Online</span>
-                      </Button>
+                    <Link
+                      href={`/booking?package=${pkg.id}`}
+                      className={cn(
+                        buttonVariants({ variant: pkg.isFeatured ? "gold" : "goldOutline" }),
+                        "w-full gap-2 text-xs font-bold"
+                      )}
+                    >
+                      <Calendar className="h-4 w-4" />
+                      <span>Book This Package Online</span>
                     </Link>
                   </div>
                 </div>
@@ -220,16 +222,18 @@ export default function PackagesPage() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <a href={`tel:${BRAND_CONFIG.contact.primaryPhone}`}>
-              <Button variant="outline" className="gap-2 text-xs">
-                <Phone className="h-4 w-4 text-salon-gold" />
-                <span>Call {BRAND_CONFIG.contact.primaryPhone}</span>
-              </Button>
+            <a
+              href={`tel:${BRAND_CONFIG.contact.primaryPhone}`}
+              className={cn(buttonVariants({ variant: "outline" }), "gap-2 text-xs")}
+            >
+              <Phone className="h-4 w-4 text-salon-gold" />
+              <span>Call {BRAND_CONFIG.contact.primaryPhone}</span>
             </a>
-            <Link href="/consultation">
-              <Button variant="gold" className="gap-2 text-xs">
-                <span>Free Consultation</span>
-              </Button>
+            <Link
+              href="/consultation"
+              className={cn(buttonVariants({ variant: "gold" }), "gap-2 text-xs")}
+            >
+              <span>Free Consultation</span>
             </Link>
           </div>
         </div>

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import dbRepo from "@/lib/db/repo";
+import emailService from "@/lib/email/service";
 import { adminOfflinePaymentSchema } from "@/lib/validation/schemas";
 import { checkAdminAuth } from "@/lib/auth/rbac";
 
@@ -43,6 +44,16 @@ export async function POST(req: NextRequest) {
       ...validation.data,
       recordedBy: validation.data.recordedBy || auth.user?.name || "Receptionist",
     });
+
+    // Asynchronously dispatch Payment Receipt Email for Offline Transaction
+    emailService
+      .sendPaymentReceipt({
+        appointmentId: validation.data.appointmentId,
+        offlinePaymentId: (result as any)?.offlineRecord?.id || (result as any)?.offlinePayment?.id,
+      })
+      .catch((emailErr) => {
+        console.warn("[OFFLINE_PAYMENT_RECEIPT_EMAIL_ERROR]", emailErr?.message);
+      });
 
     return NextResponse.json({
       success: true,

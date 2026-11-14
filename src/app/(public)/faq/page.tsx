@@ -3,11 +3,12 @@
 import * as React from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Accordion } from "@/components/ui/accordion";
 import { Breadcrumbs } from "@/components/shared/breadcrumbs";
 import { HelpCircle, Phone, Calendar } from "lucide-react";
 import { BRAND_CONFIG } from "@/lib/constants/brand";
+import { cn } from "@/lib/utils/cn";
 
 interface DynamicFaq {
   id: string;
@@ -138,17 +139,19 @@ export default function FAQPage() {
             Our salon hospitality desk at Tinpulwa Chowk is available 7 days a week from 10:00 AM to 10:00 PM to help with custom styling advice, bridal consultations, or service questions.
           </p>
           <div className="flex flex-wrap items-center justify-center gap-4 pt-2">
-            <a href={`tel:${BRAND_CONFIG.contact.primaryPhone}`}>
-              <Button variant="gold" className="gap-2 text-xs">
-                <Phone className="h-4 w-4" />
-                <span>Call {BRAND_CONFIG.contact.primaryPhone}</span>
-              </Button>
+            <a
+              href={`tel:${BRAND_CONFIG.contact.primaryPhone}`}
+              className={cn(buttonVariants({ variant: "gold" }), "gap-2 text-xs")}
+            >
+              <Phone className="h-4 w-4" />
+              <span>Call {BRAND_CONFIG.contact.primaryPhone}</span>
             </a>
-            <Link href="/booking">
-              <Button variant="outline" className="gap-2 text-xs">
-                <Calendar className="h-4 w-4 text-salon-gold" />
-                <span>Book Appointment Online</span>
-              </Button>
+            <Link
+              href="/booking"
+              className={cn(buttonVariants({ variant: "outline" }), "gap-2 text-xs")}
+            >
+              <Calendar className="h-4 w-4 text-salon-gold" />
+              <span>Book Appointment Online</span>
             </Link>
           </div>
         </div>

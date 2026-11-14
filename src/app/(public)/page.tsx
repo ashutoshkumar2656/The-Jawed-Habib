@@ -33,7 +33,7 @@ import {
   Check,
 } from "lucide-react";
 import { BRAND_CONFIG } from "@/lib/constants/brand";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import dynamic from "next/dynamic";
 import { SectionHeader } from "@/components/shared/section-header";
@@ -385,7 +385,7 @@ export default function HomePage() {
       {/* 07: Advance Deposit Selection (₹1,000 - ₹2,500)                */}
       {/* 08: Final Booking Summary & Razorpay Standard Checkout        */}
       {/* ============================================================== */}
-      <div id="packages" className="scroll-mt-24">
+      <div id="bridal-experience" className="scroll-mt-28">
         <React.Suspense fallback={<div className="h-96 w-full animate-pulse rounded-2xl bg-zinc-900/40" />}>
           <BridalBookingExperience />
         </React.Suspense>
@@ -701,15 +701,14 @@ export default function HomePage() {
       {/* ============================================================== */}
       {/* SECTION 15: HAIR & BEAUTY SHOWCASE (Beyond Bridal)             */}
       {/* ============================================================== */}
-      <div id="services" className="scroll-mt-24">
+      <div id="services" className="scroll-mt-28">
         <BeyondBridalSection />
       </div>
 
       {/* ============================================================== */}
       {/* SECTION 16: SALON EXPERIENCE / INTERIOR GALLERY                */}
       {/* ============================================================== */}
-      <span id="gallery" className="scroll-mt-24" />
-      <section id="location" className="mx-auto max-w-7xl px-4 py-16 md:px-6 md:py-24 border-t border-white/10">
+      <section id="location" className="mx-auto max-w-7xl px-4 py-16 md:px-6 md:py-24 border-t border-white/10 scroll-mt-28">
         <div className="max-w-3xl space-y-3 mb-12">
           <p className="text-xs font-bold uppercase tracking-[0.25em] text-salon-gold">
             The Studio
@@ -941,11 +940,13 @@ export default function HomePage() {
                 href={BRAND_CONFIG.location.googleMapsUrl}
                 target="_blank"
                 rel="noopener noreferrer"
+                className={cn(
+                  buttonVariants({ variant: "outline", size: "sm" }),
+                  "gap-2 border-salon-gold/50 text-salon-gold hover:bg-salon-gold hover:text-black w-full"
+                )}
               >
-                <Button variant="outline" size="sm" className="gap-2 border-salon-gold/50 text-salon-gold hover:bg-salon-gold hover:text-black w-full">
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  <span>Open Directions on Google Maps</span>
-                </Button>
+                <ExternalLink className="h-3.5 w-3.5" />
+                <span>Open Directions on Google Maps</span>
               </a>
             </div>
           </div>
@@ -1065,8 +1066,7 @@ export default function HomePage() {
       {/* ============================================================== */}
       {/* SECTION 21: FINAL BOOKING CTA                                  */}
       {/* ============================================================== */}
-      <span id="availability" className="scroll-mt-24" />
-      <section id="reserve" className="relative py-24 overflow-hidden border-t border-white/10 bg-gradient-to-b from-zinc-950 via-salon-black to-black text-center">
+      <section id="reserve" className="relative py-24 overflow-hidden border-t border-white/10 bg-gradient-to-b from-zinc-950 via-salon-black to-black text-center scroll-mt-28">
         <div className="absolute inset-0 bg-radial-gradient from-salon-gold/10 via-transparent to-transparent pointer-events-none" />
 
         <div className="container relative z-10 mx-auto px-4 max-w-3xl space-y-6">
@@ -1097,16 +1097,13 @@ export default function HomePage() {
               href={`https://wa.me/91${BRAND_CONFIG.contact.whatsappPhone}?text=Hello%20The%20Jawed%20Habib%20Salon%20Lalganj%2C%20I%20would%20like%20to%20reserve%20a%20bridal%20appointment.`}
               target="_blank"
               rel="noopener noreferrer"
-              className="w-full sm:w-auto"
+              className={cn(
+                buttonVariants({ variant: "outline", size: "lg" }),
+                "w-full sm:w-auto gap-2 border-emerald-600/60 text-emerald-400 hover:bg-emerald-950/40 px-8 py-6 text-sm"
+              )}
             >
-              <Button
-                variant="outline"
-                size="lg"
-                className="w-full sm:w-auto gap-2 border-emerald-600/60 text-emerald-400 hover:bg-emerald-950/40 px-8 py-6 text-sm"
-              >
-                <MessageCircle className="h-4 w-4" />
-                <span>WhatsApp Us →</span>
-              </Button>
+              <MessageCircle className="h-4 w-4" />
+              <span>WhatsApp Us →</span>
             </a>
           </div>
         </div>

@@ -3,9 +3,10 @@
 import * as React from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Breadcrumbs } from "@/components/shared/breadcrumbs";
 import { SectionHeader } from "@/components/shared/section-header";
+import { cn } from "@/lib/utils/cn";
 import {
   Check,
   Calendar,
@@ -187,6 +188,7 @@ export default function PricingPage() {
           <div className="flex flex-wrap items-center justify-center gap-2">
             {categories.map((cat) => (
               <button
+                type="button"
                 key={cat}
                 onClick={() => setSelectedCategory(cat)}
                 className={`text-xs px-4 py-2 rounded-full border transition-all ${
@@ -226,10 +228,11 @@ export default function PricingPage() {
                       {item.status}
                     </span>
                   </div>
-                  <Link href={`/booking?service=${encodeURIComponent(item.service)}`}>
-                    <Button variant="gold" size="sm" className="text-xs">
-                      Book
-                    </Button>
+                  <Link
+                    href={`/booking?service=${encodeURIComponent(item.service)}`}
+                    className={cn(buttonVariants({ variant: "gold", size: "sm" }), "text-xs")}
+                  >
+                    Book
                   </Link>
                 </div>
               </div>
@@ -308,14 +311,15 @@ export default function PricingPage() {
                 </div>
 
                 <div className="mt-8 pt-4 border-t border-zinc-800">
-                  <Link href={`/booking?package=${encodeURIComponent(pkg.name)}`}>
-                    <Button
-                      variant={pkg.highlight ? "gold" : "outline"}
-                      className="w-full gap-2 text-xs"
-                    >
-                      <Calendar className="h-4 w-4" />
-                      <span>Reserve This Package</span>
-                    </Button>
+                  <Link
+                    href={`/booking?package=${encodeURIComponent(pkg.name)}`}
+                    className={cn(
+                      buttonVariants({ variant: pkg.highlight ? "gold" : "outline" }),
+                      "w-full gap-2 text-xs"
+                    )}
+                  >
+                    <Calendar className="h-4 w-4" />
+                    <span>Reserve This Package</span>
                   </Link>
                 </div>
               </div>
@@ -341,17 +345,19 @@ export default function PricingPage() {
             Reserve your chair online without any upfront card deposit. Pay directly at our Lalganj salon desk.
           </p>
           <div className="pt-2 flex flex-wrap justify-center gap-4">
-            <Link href="/booking">
-              <Button variant="gold" size="lg" className="gap-2">
-                <Calendar className="h-4 w-4" />
-                <span>Book Appointment Online</span>
-              </Button>
+            <Link
+              href="/booking"
+              className={cn(buttonVariants({ variant: "gold", size: "lg" }), "gap-2")}
+            >
+              <Calendar className="h-4 w-4" />
+              <span>Book Appointment Online</span>
             </Link>
-            <a href={`tel:+91${BRAND_CONFIG.contact.primaryPhone}`}>
-              <Button variant="outline" size="lg" className="gap-2">
-                <Phone className="h-4 w-4 text-salon-gold" />
-                <span>Call Desk (+91 {BRAND_CONFIG.contact.primaryPhone})</span>
-              </Button>
+            <a
+              href={`tel:+91${BRAND_CONFIG.contact.primaryPhone}`}
+              className={cn(buttonVariants({ variant: "outline", size: "lg" }), "gap-2")}
+            >
+              <Phone className="h-4 w-4 text-salon-gold" />
+              <span>Call Desk (+91 {BRAND_CONFIG.contact.primaryPhone})</span>
             </a>
           </div>
         </div>

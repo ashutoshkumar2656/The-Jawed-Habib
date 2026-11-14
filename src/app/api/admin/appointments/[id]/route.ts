@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkAdminAuth } from "@/lib/auth/rbac";
 import dbRepo from "@/lib/db/repo";
+import emailService from "@/lib/email/service";
 import { adminAppointmentStatusSchema } from "@/lib/validation/schemas";
 
 export const runtime = "nodejs";
@@ -29,6 +30,13 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       rescheduledDate: validation.data.rescheduledDate,
       rescheduledTime: validation.data.rescheduledTime,
     });
+
+    // If marked as COMPLETED by authorized admin, trigger post-service thank-you email
+    if (validation.data.status === "COMPLETED") {
+      emailService.sendPostServiceThankYou(id).catch((emailErr) => {
+        console.warn("[POST_SERVICE_THANK_YOU_EMAIL_ERROR]", emailErr?.message);
+      });
+    }
 
     return NextResponse.json({ success: true, data: updated });
   } catch (error: any) {

@@ -81,9 +81,18 @@ const EVERYDAY_SERVICES: EverydayService[] = [
 ];
 
 export function BeyondBridalSection() {
+  const handleBookSlot = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const el = document.getElementById("availability");
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth" });
+    } else {
+      window.location.href = "/booking";
+    }
+  };
+
   return (
-    <section id="hair" className="mx-auto max-w-7xl px-4 py-16 md:px-6 md:py-24 scroll-mt-20">
-      <div id="services" className="scroll-mt-24" />
+    <section id="hair" className="mx-auto max-w-7xl px-4 py-16 md:px-6 md:py-24 scroll-mt-28">
       {/* Section Header */}
       <div className="max-w-3xl space-y-3 mb-12">
         <p className="text-xs font-bold uppercase tracking-[0.25em] text-salon-gold">
@@ -157,16 +166,15 @@ export function BeyondBridalSection() {
                 </p>
               </div>
 
-              <a href="#availability">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5 border-salon-gold/40 text-xs font-semibold text-salon-gold hover:bg-salon-gold hover:text-black transition-all"
-                >
-                  <span>Book Slot</span>
-                  <ArrowRight className="h-3.5 w-3.5" />
-                </Button>
-              </a>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleBookSlot}
+                className="gap-1.5 border-salon-gold/40 text-xs font-semibold text-salon-gold hover:bg-salon-gold hover:text-black transition-all"
+              >
+                <span>Book Slot</span>
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Button>
             </div>
           </div>
         ))}

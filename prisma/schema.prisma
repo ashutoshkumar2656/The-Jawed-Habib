@@ -89,6 +89,20 @@ enum NotificationType {
   SYSTEM
 }
 
+enum EmailEventType {
+  BOOKING_CONFIRMATION
+  PAYMENT_RECEIPT
+  APPOINTMENT_REMINDER
+  POST_SERVICE_THANK_YOU
+}
+
+enum EmailDeliveryStatus {
+  PENDING
+  ACCEPTED
+  SENT
+  FAILED
+}
+
 // -------------------------------------------------------------
 // 1. User
 // -------------------------------------------------------------
@@ -380,6 +394,7 @@ model Appointment {
   offlinePayments     OfflinePaymentRecord[]
   razorpayOrders      RazorpayOrderRecord[]
   refunds             PaymentRefundRecord[]
+  emailLogs           EmailLog[]
 
   @@index([customerProfileId])
   @@index([customerPhone])
@@ -577,21 +592,29 @@ model Package {
 // 18. Enquiry
 // -------------------------------------------------------------
 model Enquiry {
-  id              String        @id @default(cuid())
-  name            String
-  phone           String
-  email           String?
-  serviceInterest String?
-  type            String        @default("GENERAL") // "GENERAL", "SERVICE", "CONSULTATION", "BRIDAL"
-  message         String
-  status          EnquiryStatus @default(NEW)
-  adminNotes      String?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  id                 String        @id @default(cuid())
+  enquiryNumber      String?       @unique // Human-readable reference e.g. "ENQ-20261114-0001"
+  name               String
+  phone              String
+  email              String?
+  serviceInterest    String?
+  type               String        @default("GENERAL") // "GENERAL", "SERVICE", "CONSULTATION", "BRIDAL"
+  message            String
+  status             EnquiryStatus @default(NEW)
+  adminNotes         String?
+  source             String?       @default("Website Contact Form")
+  emailStatus        String?       @default("PENDING") // PENDING, SENT, FAILED, SIMULATED
+  googleSheetsStatus String?       @default("PENDING") // PENDING, SYNCED, FAILED, DISABLED
+  emailSentAt        DateTime?
+  sheetsSyncedAt     DateTime?
+  lastError          String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
 
   @@index([phone])
   @@index([status])
   @@index([type])
+  @@index([createdAt])
 }
 
 // -------------------------------------------------------------
@@ -862,4 +885,36 @@ model OfflinePaymentRecord {
   @@index([appointmentId])
   @@index([createdAt])
   @@index([receivedDate])
+}
+
+// -------------------------------------------------------------
+// 35. EmailLog (Transactional Outbox & Delivery Audit Log)
+// -------------------------------------------------------------
+model EmailLog {
+  id                String              @id @default(cuid())
+  appointmentId     String?
+  appointment       Appointment?        @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  paymentRecordId   String?
+  offlinePaymentId  String?
+  customerEmail     String
+  customerName      String?
+  eventType         EmailEventType
+  deliveryStatus    EmailDeliveryStatus @default(PENDING)
+  attemptCount      Int                 @default(0)
+  idempotencyKey    String              @unique
+  subject           String
+  bodyText          String?
+  lastError         String?
+  providerMessageId String?
+  provider          String              @default("RESEND")
+  sentAt            DateTime?
+  metadata          String?             // JSON string
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([appointmentId])
+  @@index([customerEmail])
+  @@index([eventType])
+  @@index([deliveryStatus])
+  @@index([createdAt])
 }

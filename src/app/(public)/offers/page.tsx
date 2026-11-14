@@ -3,8 +3,9 @@
 import * as React from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Breadcrumbs } from "@/components/shared/breadcrumbs";
+import { cn } from "@/lib/utils/cn";
 import {
   Tag,
   Calendar,
@@ -235,10 +236,11 @@ export default function OffersPage() {
                         )}
                       </Button>
 
-                      <Link href={`/booking?coupon=${coupon.code}`}>
-                        <Button variant="gold" size="sm" className="text-xs font-bold">
-                          Apply
-                        </Button>
+                      <Link
+                        href={`/booking?coupon=${coupon.code}`}
+                        className={cn(buttonVariants({ variant: "gold", size: "sm" }), "text-xs font-bold")}
+                      >
+                        Apply
                       </Link>
                     </div>
                   </div>

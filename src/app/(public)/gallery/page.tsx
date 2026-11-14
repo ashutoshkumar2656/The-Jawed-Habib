@@ -6,8 +6,9 @@ import { Badge } from "@/components/ui/badge";
 import { Breadcrumbs } from "@/components/shared/breadcrumbs";
 import { LightboxModal, GalleryPhoto } from "@/components/shared/lightbox-modal";
 import { Maximize2, Instagram, Image as ImageIcon } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { BRAND_CONFIG } from "@/lib/constants/brand";
+import { cn } from "@/lib/utils/cn";
 
 interface DynamicGalleryItem {
   id: string;
@@ -95,6 +96,7 @@ export default function GalleryPage() {
         <div className="flex flex-wrap items-center justify-center gap-2 border-b border-zinc-800 pb-6">
           {categories.map((cat) => (
             <button
+              type="button"
               key={cat}
               onClick={() => setActiveCategory(cat)}
               className={`px-4 py-2 rounded-xl text-xs uppercase tracking-wider font-semibold transition-all ${
@@ -189,11 +191,10 @@ export default function GalleryPage() {
               href={BRAND_CONFIG.contact.instagramUrl}
               target="_blank"
               rel="noopener noreferrer"
+              className={cn(buttonVariants({ variant: "gold" }), "gap-2")}
             >
-              <Button variant="gold" className="gap-2">
-                <Instagram className="h-4 w-4" />
-                <span>Follow @the_jawedhabib_lalganj</span>
-              </Button>
+              <Instagram className="h-4 w-4" />
+              <span>Follow @the_jawedhabib_lalganj</span>
             </a>
           </div>
         </div>

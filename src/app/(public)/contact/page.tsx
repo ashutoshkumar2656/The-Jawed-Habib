@@ -3,10 +3,11 @@
 import * as React from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Breadcrumbs } from "@/components/shared/breadcrumbs";
 import { useToast } from "@/components/ui/toast";
+import { cn } from "@/lib/utils/cn";
 import {
   Phone,
   MapPin,
@@ -187,13 +188,11 @@ export default function ContactPage() {
                   href={BRAND_CONFIG.location.googleMapsUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full block"
+                  className={cn(buttonVariants({ variant: "gold" }), "w-full gap-2 text-xs")}
                 >
-                  <Button variant="gold" className="w-full gap-2 text-xs">
-                    <MapPin className="h-4 w-4" />
-                    <span>Get Directions on Google Maps</span>
-                    <ExternalLink className="h-3 w-3 ml-auto" />
-                  </Button>
+                  <MapPin className="h-4 w-4" />
+                  <span>Get Directions on Google Maps</span>
+                  <ExternalLink className="h-3 w-3 ml-auto" />
                 </a>
               </div>
             </div>
@@ -376,16 +375,18 @@ export default function ContactPage() {
             Skip the waiting room. Reserve your styling chair and preferred master stylist online in less than 2 minutes.
           </p>
           <div className="pt-2 flex flex-wrap justify-center gap-4">
-            <Link href="/booking">
-              <Button variant="gold" size="lg" className="gap-2 text-xs font-semibold">
-                <Calendar className="h-4 w-4" />
-                <span>Book Appointment Online</span>
-              </Button>
+            <Link
+              href="/booking"
+              className={cn(buttonVariants({ variant: "gold", size: "lg" }), "gap-2 text-xs font-semibold")}
+            >
+              <Calendar className="h-4 w-4" />
+              <span>Book Appointment Online</span>
             </Link>
-            <a href={`tel:+91${BRAND_CONFIG.contact.primaryPhone}`}>
-              <Button variant="secondary" size="lg" className="text-xs">
-                Call Direct: +91 {BRAND_CONFIG.contact.primaryPhone}
-              </Button>
+            <a
+              href={`tel:+91${BRAND_CONFIG.contact.primaryPhone}`}
+              className={cn(buttonVariants({ variant: "secondary", size: "lg" }), "text-xs")}
+            >
+              Call Direct: +91 {BRAND_CONFIG.contact.primaryPhone}
             </a>
           </div>
         </div>

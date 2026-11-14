@@ -97,8 +97,18 @@ export function BridalPortfolioSection() {
     caption: plate.description,
   }));
 
+  const handleBookLook = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const el = document.getElementById("availability");
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth" });
+    } else {
+      window.location.href = "/booking";
+    }
+  };
+
   return (
-    <section id="gallery" className="mx-auto max-w-7xl px-4 py-16 md:px-6 md:py-24">
+    <section id="gallery" className="mx-auto max-w-7xl px-4 py-16 md:px-6 md:py-24 scroll-mt-28">
       {/* Section Header */}
       <div className="max-w-3xl space-y-3 mb-12">
         <p className="text-xs font-bold uppercase tracking-[0.25em] text-salon-gold">
@@ -187,11 +197,14 @@ export function BridalPortfolioSection() {
             </div>
 
             <div className="flex flex-wrap items-center gap-3 pt-6 border-t border-white/10">
-              <a href="#availability">
-                <Button variant="gold" size="default" className="gap-2 font-bold shadow-md">
-                  <span>Book This Look</span>
-                </Button>
-              </a>
+              <Button
+                variant="gold"
+                size="default"
+                onClick={handleBookLook}
+                className="gap-2 font-bold shadow-md"
+              >
+                <span>Book This Look</span>
+              </Button>
               <Button
                 variant="outline"
                 size="default"

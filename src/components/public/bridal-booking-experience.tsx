@@ -29,12 +29,21 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { BRAND_CONFIG } from "@/lib/constants/brand";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils/cn";
 import { useSearchParams } from "next/navigation";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths, isBefore, startOfToday } from "date-fns";
+import { getKolkataDateString } from "@/lib/utils/timezone";
+
+// Timezone-safe date string formatter (prevents UTC date shifts)
+export function formatDateSafe(dateStr: string, formatPattern: string): string {
+  if (!dateStr) return "";
+  const cleanDate = dateStr.includes("T") ? dateStr.split("T")[0] : dateStr;
+  const d = new Date(`${cleanDate}T12:00:00`);
+  return format(d, formatPattern);
+}
 
 export interface BridalService {
   id: string;
@@ -209,12 +218,21 @@ export function BridalBookingExperience() {
   const [loadingServices, setLoadingServices] = React.useState(true);
 
   // Selected Booking State
+  const kolkataToday = React.useMemo(() => getKolkataDateString(), []);
   const [selectedPackage, setSelectedPackage] = React.useState<BridalService>(FALLBACK_BRIDAL_PACKAGES[0]);
   const [currentMonth, setCurrentMonth] = React.useState<Date>(new Date());
-  const [selectedDate, setSelectedDate] = React.useState<string>(format(new Date(), "yyyy-MM-dd"));
+  const [selectedDate, setSelectedDate] = React.useState<string>(kolkataToday);
   const [selectedTime, setSelectedTime] = React.useState<string>("11:30 AM");
   const [availableSlots, setAvailableSlots] = React.useState<string[]>(DEFAULT_TIME_SLOTS);
   const [loadingSlots, setLoadingSlots] = React.useState(false);
+
+  // Month Availability State
+  const [monthData, setMonthData] = React.useState<{
+    availableDates: string[];
+    unavailableDates: string[];
+    blockedDates: string[];
+  } | null>(null);
+  const [loadingMonth, setLoadingMonth] = React.useState(false);
 
   // Advance Deposit State
   const [advanceAmount, setAdvanceAmount] = React.useState<number>(2000);
@@ -280,6 +298,33 @@ export function BridalBookingExperience() {
     };
   }, [paramService]);
 
+  // Fetch dynamic month availability
+  React.useEffect(() => {
+    let isMounted = true;
+    async function loadMonthAvailability() {
+      setLoadingMonth(true);
+      try {
+        const ym = format(currentMonth, "yyyy-MM");
+        const srvId = selectedPackage?.id || "srv_1";
+        const res = await fetch(`/api/appointments/availability?month=${ym}&serviceIds=${srvId}`);
+        if (res.ok) {
+          const json = await res.json();
+          if (isMounted && json.success && json.data?.month) {
+            setMonthData(json.data.month);
+          }
+        }
+      } catch (err) {
+        console.warn("Could not load month availability:", err);
+      } finally {
+        if (isMounted) setLoadingMonth(false);
+      }
+    }
+    loadMonthAvailability();
+    return () => {
+      isMounted = false;
+    };
+  }, [currentMonth, selectedPackage?.id]);
+
   // Fetch slot availability when selected date changes
   React.useEffect(() => {
     let isMounted = true;
@@ -287,43 +332,54 @@ export function BridalBookingExperience() {
       if (!selectedDate) return;
       setLoadingSlots(true);
       try {
-        const res = await fetch(`/api/appointments/availability?date=${selectedDate}`);
+        const srvId = selectedPackage?.id || "srv_1";
+        const res = await fetch(`/api/appointments/availability?date=${selectedDate}&serviceIds=${srvId}`);
         if (res.ok) {
           const data = await res.json();
           const rawSlots = data?.data?.slots || data?.slots;
-          if (data.success && Array.isArray(rawSlots) && rawSlots.length > 0) {
-            const openTimes = rawSlots
-              .filter((s: { isAvailable: boolean }) => s.isAvailable)
-              .map((s: { time: string }) => s.time);
-            if (isMounted && openTimes.length > 0) {
-              const formattedSlots = openTimes.map((t: string) => {
-                if (t.includes("AM") || t.includes("PM")) return t;
-                const [hStr, mStr] = t.split(":");
-                const h = parseInt(hStr, 10);
-                const period = h >= 12 ? "PM" : "AM";
-                const h12 = h % 12 || 12;
-                return `${h12.toString().padStart(2, "0")}:${mStr} ${period}`;
-              });
-              setAvailableSlots(formattedSlots);
-              setSelectedTime((prevTime) => (formattedSlots.includes(prevTime) ? prevTime : formattedSlots[0]));
+          if (data.success && Array.isArray(rawSlots)) {
+            const openSlots = rawSlots.filter((s: { isAvailable: boolean }) => s.isAvailable);
+            const openTimes = openSlots.map((s: { time: string }) => s.time);
+            if (isMounted) {
+              if (openTimes.length > 0) {
+                const formattedSlots = openTimes.map((t: string) => {
+                  if (t.includes("AM") || t.includes("PM")) return t;
+                  const [hStr, mStr] = t.split(":");
+                  const h = parseInt(hStr, 10);
+                  const period = h >= 12 ? "PM" : "AM";
+                  const h12 = h % 12 || 12;
+                  return `${h12.toString().padStart(2, "0")}:${mStr} ${period}`;
+                });
+                setAvailableSlots(formattedSlots);
+                setSelectedTime((prevTime) => (formattedSlots.includes(prevTime) ? prevTime : formattedSlots[0]));
+              } else {
+                setAvailableSlots([]);
+                setSelectedTime("");
+              }
               return;
             }
           }
         }
       } catch (err) {
-        console.warn("Using default time slots:", err);
+        console.warn("Using fallback time slots on network error:", err);
       } finally {
         if (isMounted) setLoadingSlots(false);
       }
       if (isMounted) {
-        setAvailableSlots(DEFAULT_TIME_SLOTS);
+        if (selectedDate >= kolkataToday) {
+          setAvailableSlots(DEFAULT_TIME_SLOTS);
+          setSelectedTime((prev) => prev || DEFAULT_TIME_SLOTS[0]);
+        } else {
+          setAvailableSlots([]);
+          setSelectedTime("");
+        }
       }
     }
     fetchSlots();
     return () => {
       isMounted = false;
     };
-  }, [selectedDate]);
+  }, [selectedDate, kolkataToday, selectedPackage?.id]);
 
   // Sync advance amount within package constraints whenever package changes
   React.useEffect(() => {
@@ -698,7 +754,7 @@ export function BridalBookingExperience() {
       {/* ============================================================== */}
       {/* SECTION 04: WEDDING DATE CALENDAR & APPOINTMENT AVAILABILITY    */}
       {/* ============================================================== */}
-      <section id="availability" className="mx-auto max-w-7xl px-4 py-16 md:px-6 md:py-24">
+      <section id="availability" className="scroll-mt-28 mx-auto max-w-7xl px-4 py-16 md:px-6 md:py-24">
         <div className="max-w-3xl space-y-3 mb-10">
           <p className="text-xs font-bold uppercase tracking-[0.25em] text-salon-gold">
             Wedding Date
@@ -720,14 +776,16 @@ export function BridalBookingExperience() {
               <div className="mb-6 flex items-center justify-between">
                 <button
                   type="button"
+                  disabled={format(currentMonth, "yyyy-MM") <= format(new Date(), "yyyy-MM")}
                   onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
-                  className="rounded-full p-2 text-zinc-400 transition-colors hover:bg-white/10 hover:text-white"
+                  className="rounded-full p-2 text-zinc-400 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
                   aria-label="Previous month"
                 >
                   <ChevronLeft className="h-5 w-5" />
                 </button>
-                <div className="font-serif text-lg font-semibold text-salon-ivory md:text-xl">
-                  {format(currentMonth, "MMMM yyyy")}
+                <div className="font-serif text-lg font-semibold text-salon-ivory md:text-xl flex items-center gap-2">
+                  <span>{format(currentMonth, "MMMM yyyy")}</span>
+                  {loadingMonth && <Loader2 className="h-3.5 w-3.5 animate-spin text-salon-gold" />}
                 </div>
                 <button
                   type="button"
@@ -758,19 +816,34 @@ export function BridalBookingExperience() {
                 {/* Day Buttons */}
                 {calendarDays.map((day) => {
                   const dateStr = format(day, "yyyy-MM-dd");
-                  const isPast = isBefore(day, today);
+                  const isPast = dateStr < kolkataToday;
+                  const isBlocked = monthData?.blockedDates?.includes(dateStr) ?? false;
+                  const isClosed = monthData
+                    ? !monthData.availableDates.includes(dateStr) && !isPast && !isBlocked
+                    : false;
+                  const isDisabled = isPast || isBlocked || isClosed;
                   const isSelected = selectedDate === dateStr;
+
+                  let title = "Available for Appointment";
+                  if (isPast) title = "Past date";
+                  else if (isBlocked) title = "Salon Holiday / Closed";
+                  else if (isClosed) title = "Fully Booked or Salon Closed";
 
                   return (
                     <button
                       key={dateStr}
                       type="button"
-                      disabled={isPast}
+                      disabled={isDisabled}
+                      title={title}
                       onClick={() => handleSelectDate(day)}
                       className={cn(
                         "relative flex h-9 w-full items-center justify-center rounded-full text-sm font-medium transition-all select-none",
                         isPast
                           ? "cursor-not-allowed text-zinc-700"
+                          : isBlocked
+                          ? "cursor-not-allowed text-rose-500/50 line-through bg-rose-950/20"
+                          : isClosed
+                          ? "cursor-not-allowed text-zinc-600 bg-zinc-900/30"
                           : isSelected
                           ? "bg-salon-gold text-black font-bold shadow-[0_0_15px_rgba(198,165,107,0.5)] scale-105"
                           : "text-zinc-300 hover:bg-white/10 hover:text-white"
@@ -780,18 +853,38 @@ export function BridalBookingExperience() {
                       {isSelected && (
                         <span className="absolute -bottom-1 h-1 w-1 rounded-full bg-white" />
                       )}
+                      {isBlocked && (
+                        <span className="absolute top-1 right-1 h-1 w-1 rounded-full bg-rose-500" />
+                      )}
                     </button>
                   );
                 })}
               </div>
 
-              {/* Working Hours Badge */}
-              <div className="mt-6 flex items-center justify-between border-t border-white/10 pt-4 text-xs text-zinc-400">
-                <span className="flex items-center gap-1.5 text-salon-goldLight">
-                  <Clock className="h-3.5 w-3.5 text-salon-gold" />
-                  <span>Salon Hours: 10:00 AM – 10:00 PM</span>
-                </span>
-                <span className="text-zinc-500">Open all 7 days</span>
+              {/* Working Hours & Legend */}
+              <div className="mt-6 space-y-3 border-t border-white/10 pt-4 text-xs text-zinc-400">
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-salon-goldLight">
+                    <Clock className="h-3.5 w-3.5 text-salon-gold" />
+                    <span>Salon Hours: 10:00 AM – 10:00 PM</span>
+                  </span>
+                  <span className="text-zinc-500">Open all 7 days</span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-4 text-[11px] text-zinc-400 pt-1">
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-salon-gold" />
+                    <span>Selected</span>
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-zinc-300" />
+                    <span>Available</span>
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-rose-500" />
+                    <span>Closed / Holiday</span>
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -801,7 +894,7 @@ export function BridalBookingExperience() {
                 <div className="space-y-1">
                   <div className="text-xs uppercase tracking-wider text-zinc-500">Selected Date</div>
                   <div className="font-serif text-lg font-bold text-salon-gold">
-                    {format(new Date(selectedDate), "EEEE, MMMM d, yyyy")}
+                    {formatDateSafe(selectedDate, "EEEE, MMMM d, yyyy")}
                   </div>
                 </div>
 
@@ -811,26 +904,36 @@ export function BridalBookingExperience() {
                     {loadingSlots && <Loader2 className="h-3.5 w-3.5 animate-spin text-salon-gold" />}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-2">
-                    {availableSlots.map((slot) => {
-                      const isTimeSelected = selectedTime === slot;
-                      return (
-                        <button
-                          key={slot}
-                          type="button"
-                          onClick={() => setSelectedTime(slot)}
-                          className={cn(
-                            "rounded-xl border py-2.5 text-xs font-semibold transition-all select-none text-center",
-                            isTimeSelected
-                              ? "border-salon-gold bg-salon-gold text-black shadow-md font-bold"
-                              : "border-white/10 bg-black/30 text-zinc-300 hover:border-salon-gold/50 hover:bg-white/5"
-                          )}
-                        >
-                          {slot}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  {availableSlots.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-zinc-800 bg-black/40 p-5 text-center text-xs text-zinc-400 space-y-1.5">
+                      <Clock className="h-5 w-5 text-salon-gold/60 mx-auto" />
+                      <p className="font-semibold text-white">No Open Slots on This Date</p>
+                      <p className="text-[11px] text-zinc-500 leading-relaxed">
+                        All stylist slots for this day are either fully reserved or the salon is closed. Please pick an alternate date on the calendar.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-2">
+                      {availableSlots.map((slot) => {
+                        const isTimeSelected = selectedTime === slot;
+                        return (
+                          <button
+                            key={slot}
+                            type="button"
+                            onClick={() => setSelectedTime(slot)}
+                            className={cn(
+                              "rounded-xl border py-2.5 text-xs font-semibold transition-all select-none text-center",
+                              isTimeSelected
+                                ? "border-salon-gold bg-salon-gold text-black shadow-md font-bold"
+                                : "border-white/10 bg-black/30 text-zinc-300 hover:border-salon-gold/50 hover:bg-white/5"
+                            )}
+                          >
+                            {slot}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -839,7 +942,8 @@ export function BridalBookingExperience() {
                 <Button
                   variant="gold"
                   size="lg"
-                  className="w-full gap-2 font-bold tracking-wide shadow-md"
+                  disabled={availableSlots.length === 0 || !selectedTime}
+                  className="w-full gap-2 font-bold tracking-wide shadow-md disabled:opacity-50"
                   onClick={() => scrollToId("booking-form-section")}
                 >
                   <span>SELECT DATE & TIME ↓</span>
@@ -853,7 +957,7 @@ export function BridalBookingExperience() {
       {/* ============================================================== */}
       {/* SECTION 05: CUSTOMER BOOKING DETAILS FORM                      */}
       {/* ============================================================== */}
-      <section id="booking-form-section" className="mx-auto max-w-7xl px-4 py-16 md:px-6 md:py-24">
+      <section id="booking-form-section" className="scroll-mt-28 mx-auto max-w-7xl px-4 py-16 md:px-6 md:py-24">
         <div className="max-w-3xl space-y-3 mb-10">
           <p className="text-xs font-bold uppercase tracking-[0.25em] text-salon-gold">
             Booking Details
@@ -874,7 +978,7 @@ export function BridalBookingExperience() {
               <div>
                 <span className="text-xs text-zinc-400">Appointment Scheduled For:</span>
                 <p className="font-serif font-bold text-salon-ivory">
-                  {format(new Date(selectedDate), "EEEE, d MMMM yyyy")} · {selectedTime}
+                  {formatDateSafe(selectedDate, "EEEE, d MMMM yyyy")} · {selectedTime || "Select a time"}
                 </p>
               </div>
             </div>
@@ -1076,7 +1180,7 @@ export function BridalBookingExperience() {
       {/* ============================================================== */}
       {/* SECTION 06 & 07: BRIDAL PACKAGE CATALOGUE & DEPOSIT SELECTION  */}
       {/* ============================================================== */}
-      <section id="packages" className="mx-auto max-w-7xl px-4 py-16 md:px-6 md:py-24">
+      <section id="packages" className="scroll-mt-28 mx-auto max-w-7xl px-4 py-16 md:px-6 md:py-24">
         <div className="max-w-3xl space-y-3 mb-10">
           <p className="text-xs font-bold uppercase tracking-[0.25em] text-salon-gold">
             Secure Your Package
@@ -1256,7 +1360,7 @@ export function BridalBookingExperience() {
         </div>
 
         {/* SECTION 07: SELECT DEPOSIT (Spacious Slider & Breakdown) */}
-        <div id="deposit-section" className="mx-auto mt-16 max-w-2xl overflow-hidden rounded-3xl border border-salon-gold/30 bg-salon-cardBlack p-8 md:p-10 shadow-2xl backdrop-blur-md">
+        <div id="deposit-section" className="scroll-mt-28 mx-auto mt-16 max-w-2xl overflow-hidden rounded-3xl border border-salon-gold/30 bg-salon-cardBlack p-8 md:p-10 shadow-2xl backdrop-blur-md">
           <div className="text-center space-y-2 mb-8">
             <span className="text-[11px] font-bold uppercase tracking-[0.25em] text-salon-gold">
               Initial Deposit
@@ -1342,7 +1446,7 @@ export function BridalBookingExperience() {
       {/* ============================================================== */}
       {/* SECTION 08: FINAL BOOKING SUMMARY & RAZORPAY CONFIRMATION      */}
       {/* ============================================================== */}
-      <section id="final-summary-section" className="mx-auto max-w-7xl px-4 py-16 md:px-6 md:py-24">
+      <section id="final-summary-section" className="scroll-mt-28 mx-auto max-w-7xl px-4 py-16 md:px-6 md:py-24">
         <div className="mx-auto max-w-2xl overflow-hidden rounded-3xl border border-salon-gold/40 bg-gradient-to-b from-salon-cardBlack to-salon-black p-8 md:p-12 shadow-[0_20px_50px_rgba(0,0,0,0.9)]">
           <div className="space-y-3 mb-8 border-b border-white/10 pb-6">
             <div className="inline-flex items-center gap-2 rounded-full border border-salon-gold/40 bg-salon-gold/10 px-3.5 py-1 text-xs font-semibold uppercase tracking-wider text-salon-gold">
@@ -1386,7 +1490,7 @@ export function BridalBookingExperience() {
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <span className="text-zinc-400">Appointment Date & Time:</span>
               <span className="font-semibold text-white">
-                {format(new Date(selectedDate), "EEE, d MMM yyyy")} · {selectedTime}
+                {formatDateSafe(selectedDate, "EEE, d MMM yyyy")} · {selectedTime}
               </span>
             </div>
 
@@ -1395,7 +1499,7 @@ export function BridalBookingExperience() {
               <div className="flex items-center justify-between border-b border-white/10 pb-3 text-xs">
                 <span className="text-zinc-400">Wedding Event & Venue:</span>
                 <span className="text-zinc-300 text-right">
-                  {eventDate ? format(new Date(eventDate), "d MMM yyyy") : "Date pending"}{weddingVenue ? ` · ${weddingVenue}` : ""}
+                  {eventDate ? formatDateSafe(eventDate, "d MMM yyyy") : "Date pending"}{weddingVenue ? ` · ${weddingVenue}` : ""}
                 </span>
               </div>
             )}
@@ -1480,7 +1584,7 @@ export function BridalBookingExperience() {
       {/* CONFIRMATION MODAL / DISPLAY VIEW                              */}
       {/* ============================================================== */}
       {confirmedBooking && (
-        <div id="booking-confirmation-view" className="mx-auto max-w-3xl px-4 py-12 md:px-6">
+        <div id="booking-confirmation-view" className="scroll-mt-28 mx-auto max-w-3xl px-4 py-12 md:px-6">
           <div className="overflow-hidden rounded-3xl border border-emerald-500/50 bg-gradient-to-b from-zinc-950 to-black p-8 md:p-12 shadow-[0_0_50px_rgba(16,185,129,0.2)] print:border-none print:shadow-none print:bg-white print:text-black">
             <div className="text-center space-y-4">
               <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 print:hidden">
@@ -1551,11 +1655,13 @@ export function BridalBookingExperience() {
                   href={`https://wa.me/91${BRAND_CONFIG.contact.whatsappPhone}?text=Hello%20The%20Jawed%20Habib%20Salon%2C%20my%20bridal%20booking%20ID%20is%20${confirmedBooking.bookingReference}.`}
                   target="_blank"
                   rel="noopener noreferrer"
+                  className={cn(
+                    buttonVariants({ variant: "outline", size: "default" }),
+                    "gap-2 border-emerald-500/40 text-emerald-400 hover:bg-emerald-950/30 inline-flex"
+                  )}
                 >
-                  <Button variant="outline" size="default" className="gap-2 border-emerald-500/40 text-emerald-400 hover:bg-emerald-950/30">
-                    <MessageCircle className="h-4 w-4" />
-                    <span>WhatsApp Salon Desk</span>
-                  </Button>
+                  <MessageCircle className="h-4 w-4" />
+                  <span>WhatsApp Salon Desk</span>
                 </a>
                 <Button
                   variant="gold"

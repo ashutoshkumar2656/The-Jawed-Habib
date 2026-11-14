@@ -4,7 +4,8 @@ import * as React from "react";
 import Image from "next/image";
 import { MessageCircle, Check, CheckCheck, Phone, Video, MoreVertical, Sparkles } from "lucide-react";
 import { BRAND_CONFIG } from "@/lib/constants/brand";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils/cn";
 
 export function BridalConsultationSection() {
   const whatsappUrl = `https://wa.me/91${BRAND_CONFIG.contact.whatsappPhone}?text=Hello%20The%20Jawed%20Habib%20Salon%20Lalganj%2C%20I%20would%20like%20to%20consult%20with%20your%20bridal%20specialist%20for%20my%20wedding.`;
@@ -180,16 +181,13 @@ export function BridalConsultationSection() {
             href={whatsappUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-block"
+            className={cn(
+              buttonVariants({ variant: "gold", size: "lg" }),
+              "gap-2.5 font-bold shadow-[0_0_25px_rgba(198,165,107,0.3)] px-8 inline-flex"
+            )}
           >
-            <Button
-              variant="gold"
-              size="lg"
-              className="gap-2.5 font-bold shadow-[0_0_25px_rgba(198,165,107,0.3)] px-8"
-            >
-              <MessageCircle className="h-5 w-5 text-emerald-950" />
-              <span>Start WhatsApp Chat</span>
-            </Button>
+            <MessageCircle className="h-5 w-5 text-emerald-950" />
+            <span>Start WhatsApp Chat</span>
           </a>
           <p className="text-[11px] text-zinc-500">
             *Illustrative consultation preview. Click above to message our Lalganj bridal team directly.

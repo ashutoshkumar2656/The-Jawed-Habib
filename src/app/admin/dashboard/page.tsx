@@ -1,3 +1,4 @@
+import * as React from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,7 @@ import {
 } from "lucide-react";
 import { BRAND_CONFIG } from "@/lib/constants/brand";
 import dbRepo from "@/lib/db/repo";
+import logger from "@/lib/logging/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -30,14 +32,74 @@ export const metadata = {
   title: "Admin Operations Dashboard | The Jawed Habib Salon – Lalganj",
 };
 
+function formatDashboardDate(dateVal: any): string {
+  if (!dateVal) return "—";
+  if (dateVal instanceof Date) {
+    return dateVal.toLocaleDateString("en-IN", {
+      timeZone: "Asia/Kolkata",
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  }
+  if (typeof dateVal === "string") {
+    const parsed = new Date(dateVal);
+    if (!isNaN(parsed.getTime())) {
+      return parsed.toLocaleDateString("en-IN", {
+        timeZone: "Asia/Kolkata",
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      });
+    }
+    return dateVal;
+  }
+  return String(dateVal);
+}
+
 export default async function AdminDashboardPage() {
-  const analytics = await dbRepo.getAdminAnalytics();
+  let analytics: any;
+  try {
+    analytics = await dbRepo.getAdminAnalytics();
+  } catch (error) {
+    logger.error("admin.dashboard.getAdminAnalytics_failed", error);
+    analytics = {
+      totalAppointments: 0,
+      todayAppointments: 0,
+      todayArrived: 0,
+      todayInProgress: 0,
+      todayCompleted: 0,
+      todayNoShow: 0,
+      todayConfirmed: 0,
+      todayPending: 0,
+      pendingAppointments: 0,
+      confirmedAppointments: 0,
+      completedAppointments: 0,
+      cancelledAppointments: 0,
+      totalEnquiries: 0,
+      pendingBookings: 0,
+      confirmedBookings: 0,
+      totalCustomers: 0,
+      newCustomers: 0,
+      totalRevenue: 0,
+      todayRevenue: 0,
+      pendingPaymentsCount: 0,
+      advanceCollected: 0,
+      remainingBalance: 0,
+      recentCustomers: [],
+      popularServices: [],
+      recentBookings: [],
+      upcomingAppointments: [],
+      recentEnquiries: [],
+      monthlyTrends: [],
+    };
+  }
 
   // Summary Cards representing operational & financial metrics
   const kpis = [
     {
       title: "Total Bookings",
-      value: analytics.totalAppointments.toString(),
+      value: (analytics.totalAppointments || 0).toString(),
       subtext: "All-time bookings",
       icon: CalendarCheck,
       variant: "gold",
@@ -61,7 +123,7 @@ export default async function AdminDashboardPage() {
     },
     {
       title: "Confirmed Bookings",
-      value: (analytics.confirmedAppointments ?? analytics.confirmedBookings).toString(),
+      value: ((analytics.confirmedAppointments ?? analytics.confirmedBookings) || 0).toString(),
       subtext: "Confirmed on calendar",
       icon: CheckCircle2,
       variant: "blue",
@@ -69,7 +131,7 @@ export default async function AdminDashboardPage() {
     },
     {
       title: "Pending Confirmation",
-      value: ((analytics as any).pendingPaymentsCount ?? (analytics.pendingAppointments ?? 0)).toString(),
+      value: ((analytics.pendingPaymentsCount ?? analytics.pendingAppointments) || 0).toString(),
       subtext: "Action required",
       icon: AlertCircle,
       variant: "amber",
@@ -77,7 +139,7 @@ export default async function AdminDashboardPage() {
     },
     {
       title: "Advance Collected",
-      value: `₹${((analytics as any).advanceCollected ?? 0).toLocaleString("en-IN")}`,
+      value: `₹${(analytics.advanceCollected || 0).toLocaleString("en-IN")}`,
       subtext: "Razorpay online deposits",
       icon: IndianRupee,
       variant: "gold",
@@ -85,7 +147,7 @@ export default async function AdminDashboardPage() {
     },
     {
       title: "Outstanding Balances",
-      value: `₹${((analytics as any).remainingBalance ?? 0).toLocaleString("en-IN")}`,
+      value: `₹${(analytics.remainingBalance || 0).toLocaleString("en-IN")}`,
       subtext: "Due at salon counter",
       icon: CreditCard,
       variant: "purple",
@@ -93,11 +155,11 @@ export default async function AdminDashboardPage() {
     },
   ];
 
-  const total = Math.max(1, analytics.totalAppointments);
-  const pendingPct = Math.round(((analytics.pendingAppointments ?? analytics.pendingBookings) / total) * 100);
-  const confirmedPct = Math.round(((analytics.confirmedAppointments ?? analytics.confirmedBookings) / total) * 100);
-  const completedPct = Math.round((analytics.completedAppointments / total) * 100);
-  const cancelledPct = Math.round((analytics.cancelledAppointments / total) * 100);
+  const total = Math.max(1, analytics.totalAppointments || 0);
+  const pendingPct = Math.round((((analytics.pendingAppointments ?? analytics.pendingBookings) || 0) / total) * 100);
+  const confirmedPct = Math.round((((analytics.confirmedAppointments ?? analytics.confirmedBookings) || 0) / total) * 100);
+  const completedPct = Math.round(((analytics.completedAppointments || 0) / total) * 100);
+  const cancelledPct = Math.round(((analytics.cancelledAppointments || 0) / total) * 100);
 
   const upcomingList = analytics.upcomingAppointments || [];
   const recentCustomersList = (analytics as any).recentCustomers || [];
@@ -279,8 +341,8 @@ export default async function AdminDashboardPage() {
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 pt-2">
-            {analytics.monthlyTrends.map((trend) => {
-              const maxApts = Math.max(1, ...analytics.monthlyTrends.map((t) => t.appointments));
+            {(analytics.monthlyTrends || []).map((trend: { month: string; appointments: number; revenue: number }) => {
+              const maxApts = Math.max(1, ...(analytics.monthlyTrends || []).map((t: { appointments: number }) => t.appointments));
               const heightPct = Math.max(15, Math.round((trend.appointments / maxApts) * 100));
 
               return (
@@ -370,7 +432,7 @@ export default async function AdminDashboardPage() {
                           </td>
                           <td className="p-3.5 whitespace-nowrap">
                             <span className="font-semibold text-white">{apt.startTime}</span>
-                            <span className="block text-[11px] text-zinc-500">{apt.appointmentDate}</span>
+                            <span className="block text-[11px] text-zinc-500">{formatDashboardDate(apt.appointmentDate)}</span>
                           </td>
                           <td className="p-3.5 whitespace-nowrap">
                             <span className="font-medium text-white">{clientName}</span>
@@ -429,7 +491,7 @@ export default async function AdminDashboardPage() {
                       </div>
                       {phone && (
                         <a
-                          href={`https://wa.me/91${phone.replace(/\D/g, "")}`}
+                          href={`https://wa.me/91${String(phone).replace(/\D/g, "")}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-emerald-400 hover:text-emerald-300 p-1.5 rounded-md hover:bg-emerald-950/30 transition-colors"
@@ -463,19 +525,25 @@ export default async function AdminDashboardPage() {
                   No upcoming appointments scheduled for today or upcoming dates.
                 </p>
               ) : (
-                upcomingList.map((apt: any) => (
-                  <div key={apt.id} className="rounded-lg border border-zinc-900 bg-zinc-900/40 p-3 text-xs space-y-1.5 hover:border-zinc-800 transition-colors">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-white">{apt.customerProfile?.user?.name || "Customer"}</span>
-                      <span className="text-[10px] font-semibold text-salon-gold font-mono">{apt.startTime}</span>
+                upcomingList.map((apt: any) => {
+                  const customerName = apt.customerProfile?.user?.name || (apt as any).customerName || "Customer";
+                  const customerPhone = apt.customerProfile?.user?.phone || (apt as any).customerPhone || "";
+                  return (
+                    <div key={apt.id} className="rounded-lg border border-zinc-900 bg-zinc-900/40 p-3 text-xs space-y-1.5 hover:border-zinc-800 transition-colors">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-white">{customerName}</span>
+                        <span className="text-[10px] font-semibold text-salon-gold font-mono">{apt.startTime}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-[11px] text-zinc-400">
+                        <span>{formatDashboardDate(apt.appointmentDate)}</span>
+                        <span className="font-mono text-zinc-300">₹{(apt.totalAmount || 0).toLocaleString("en-IN")}</span>
+                      </div>
+                      {customerPhone && (
+                        <p className="text-[10px] text-zinc-500 font-mono truncate">{customerPhone}</p>
+                      )}
                     </div>
-                    <div className="flex items-center justify-between text-[11px] text-zinc-400">
-                      <span>{apt.appointmentDate}</span>
-                      <span className="font-mono text-zinc-300">₹{apt.totalAmount}</span>
-                    </div>
-                    <p className="text-[10px] text-zinc-500 font-mono truncate">{apt.customerProfile?.user?.phone}</p>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>

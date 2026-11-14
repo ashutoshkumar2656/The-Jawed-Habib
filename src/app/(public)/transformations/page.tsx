@@ -3,10 +3,11 @@
 import * as React from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Breadcrumbs } from "@/components/shared/breadcrumbs";
 import { BeforeAfterSlider, TransformationItem } from "@/components/shared/before-after-slider";
 import { Sparkles, Calendar, Scissors, ArrowRight, Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils/cn";
 
 export default function TransformationsPage() {
   const [transformations, setTransformations] = React.useState<any[]>([]);
@@ -121,11 +122,12 @@ export default function TransformationsPage() {
                   <span className="text-xs text-zinc-400">
                     Inspired by this look?
                   </span>
-                  <Link href={`/booking?service=${item.serviceId || ""}`}>
-                    <Button variant="gold" size="sm" className="gap-1.5 text-xs">
-                      <Calendar className="h-3.5 w-3.5" />
-                      <span>Book Makeover Appointment</span>
-                    </Button>
+                  <Link
+                    href={`/booking?service=${item.serviceId || ""}`}
+                    className={cn(buttonVariants({ variant: "gold", size: "sm" }), "gap-1.5 text-xs")}
+                  >
+                    <Calendar className="h-3.5 w-3.5" />
+                    <span>Book Makeover Appointment</span>
                   </Link>
                 </div>
               </div>
@@ -142,11 +144,12 @@ export default function TransformationsPage() {
             Our master stylists at 1st Floor, Tinpulwa Chowk, Lalganj will analyze your face shape and hair texture to craft a look uniquely yours.
           </p>
           <div className="pt-2 flex flex-wrap justify-center gap-4">
-            <Link href="/booking">
-              <Button variant="gold" size="lg" className="gap-2">
-                <Calendar className="h-4 w-4" />
-                <span>Book Transformation Session</span>
-              </Button>
+            <Link
+              href="/booking"
+              className={cn(buttonVariants({ variant: "gold", size: "lg" }), "gap-2")}
+            >
+              <Calendar className="h-4 w-4" />
+              <span>Book Transformation Session</span>
             </Link>
           </div>
         </div>

@@ -10,6 +10,8 @@ import {
   DiscountType,
   NotificationType,
   EnquiryStatus,
+  EmailEventType,
+  EmailDeliveryStatus,
 } from "@prisma/client";
 import { BRAND_CONFIG } from "@/lib/constants/brand";
 import { BRIDAL_ADDONS, validateAddonIds } from "@/lib/constants/bridal";
@@ -441,6 +443,7 @@ interface MemoryReview {
 
 interface MemoryEnquiry {
   id: string;
+  enquiryNumber?: string | null;
   name: string;
   phone: string;
   email: string | null;
@@ -449,6 +452,12 @@ interface MemoryEnquiry {
   message: string;
   status: EnquiryStatus;
   adminNotes?: string | null;
+  source?: string | null;
+  emailStatus?: string | null;
+  googleSheetsStatus?: string | null;
+  emailSentAt?: Date | null;
+  sheetsSyncedAt?: Date | null;
+  lastError?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -497,6 +506,7 @@ interface MemoryTransformation {
   afterImageUrl: string;
   serviceId: string | null;
   staffId: string | null;
+  category?: string;
   clientGender: GenderTarget;
   isFeatured: boolean;
   sortOrder: number;
@@ -607,6 +617,28 @@ export interface MemoryMediaItem {
   updatedAt: Date;
 }
 
+export interface MemoryEmailLog {
+  id: string;
+  appointmentId: string | null;
+  paymentRecordId: string | null;
+  offlinePaymentId: string | null;
+  customerEmail: string;
+  customerName: string | null;
+  eventType: EmailEventType;
+  deliveryStatus: EmailDeliveryStatus;
+  attemptCount: number;
+  idempotencyKey: string;
+  subject: string;
+  bodyText: string | null;
+  lastError: string | null;
+  providerMessageId: string | null;
+  provider: string;
+  sentAt: Date | null;
+  metadata: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 class MemoryDatabase {
   users: MemoryUser[] = [];
   customerProfiles: MemoryCustomerProfile[] = [];
@@ -637,6 +669,7 @@ class MemoryDatabase {
   webhookEvents: MemoryWebhookEvent[] = [];
   offlinePayments: MemoryOfflinePayment[] = [];
   mediaItems: MemoryMediaItem[] = [];
+  emailLogs: MemoryEmailLog[] = [];
   adminSessions: {
     id: string;
     userId: string;
@@ -2468,9 +2501,15 @@ export const dbRepo = {
           include: { user: true },
         });
         return updated;
-      } catch {
+      } catch (err: any) {
+        if (shouldEnforceDurablePersistence()) {
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during cancelAppointment:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to cancel appointment in database: ${err.message || "Unknown error"}`);
+        }
         isPostgresAvailable = false;
       }
+    } else if (shouldEnforceDurablePersistence()) {
+      throw new Error("DATABASE_PERSISTENCE_FAILED: Database connection to Neon PostgreSQL is unavailable.");
     }
 
     // Memory fallback
@@ -2662,9 +2701,15 @@ export const dbRepo = {
           data,
         });
         return updated;
-      } catch {
+      } catch (err: any) {
+        if (shouldEnforceDurablePersistence()) {
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during cancelAppointment:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to cancel appointment in database: ${err.message || "Unknown error"}`);
+        }
         isPostgresAvailable = false;
       }
+    } else if (shouldEnforceDurablePersistence()) {
+      throw new Error("DATABASE_PERSISTENCE_FAILED: Database connection to Neon PostgreSQL is unavailable.");
     }
 
     const c = memoryDb.categories.find((x) => x.id === id);
@@ -2937,7 +2982,7 @@ export const dbRepo = {
   // -----------------------------------------------------------
   // APPOINTMENT AVAILABILITY & DOUBLE-BOOKING ENGINE
   // -----------------------------------------------------------
-  async getAvailableSlots(dateStr: string, serviceIds: string[], preferredStaffId?: string | null) {
+  async getAvailableSlots(dateStr: string, serviceIds: string[], preferredStaffId?: string | null, allowPastDate: boolean = false) {
     this.cleanupExpiredHolds();
     const settings = await this.getCalendarSettings();
 
@@ -2971,9 +3016,21 @@ export const dbRepo = {
     const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
     const dayName = dayNames[targetDate.getDay()];
 
-    const now = new Date();
-    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const todayStr = getKolkataDateString();
     const isToday = dateStr === todayStr;
+
+    // Check: Past date restriction
+    if (dateStr < todayStr && !allowPastDate) {
+      return {
+        date: dateStr,
+        dayName,
+        isClosed: true,
+        closeReason: "Cannot book appointments for past dates.",
+        totalDurationMinutes,
+        operatingHours: { open: BRAND_CONFIG.hours.open, close: BRAND_CONFIG.hours.close },
+        slots: [],
+      };
+    }
 
     const dayConfig = (settings.weeklyHours || []).find(
       (d) => d.day.toLowerCase() === dayName.toLowerCase()
@@ -3130,7 +3187,8 @@ export const dbRepo = {
     const maxBookingsPerSlot = settings.maxBookingsPerSlot || 3;
     const maxSimultaneous = settings.maxSimultaneousBookings || settings.maxSimultaneousAppointments || 4;
     const minimumNoticeHours = settings.minimumBookingNotice || 0;
-    const currentMins = now.getHours() * 60 + now.getMinutes();
+    const [kolkataH, kolkataM] = getKolkataTimeString().split(":").map(Number);
+    const currentMins = kolkataH * 60 + kolkataM;
     const minNoticeMins = isToday ? currentMins + minimumNoticeHours * 60 : 0;
 
     const allSlots: {
@@ -3297,8 +3355,7 @@ export const dbRepo = {
     const month = parseInt(monthStr, 10); // 1-12
     const totalDays = new Date(year, month, 0).getDate();
 
-    const today = new Date();
-    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    const todayStr = getKolkataDateString();
 
     const availableDates: string[] = [];
     const unavailableDates: string[] = [];
@@ -3572,10 +3629,13 @@ export const dbRepo = {
     }
 
     // Double-booking conflict check
+    const todayStr = getKolkataDateString();
+    const isPastDate = data.appointmentDate < todayStr;
     const availability = await this.getAvailableSlots(
       data.appointmentDate,
       data.serviceIds,
-      data.staffId
+      data.staffId,
+      isPastDate
     );
     if (availability.isClosed) {
       throw new Error(`CONFLICT_CLOSED: ${availability.closeReason || "The salon is closed on this date."}`);
@@ -4009,8 +4069,9 @@ export const dbRepo = {
 
     return {
       ...a,
-      customerName: user?.name || (a as any).customerName,
-      customerPhone: user?.phone || (a as any).customerPhone,
+      customerName: (a as any).customerName || user?.name || "Client",
+      customerPhone: (a as any).customerPhone || user?.phone || "",
+      customerEmail: (a as any).customerEmail || null,
       customerProfile: prof ? { ...prof, user } : null,
       staff: stf ? { ...stf, user: { name: stf.name } } : null,
       appointmentServices: srvs.map((s) => ({
@@ -4064,9 +4125,15 @@ export const dbRepo = {
           },
         });
         return updated;
-      } catch {
+      } catch (err: any) {
+        if (shouldEnforceDurablePersistence()) {
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during cancelAppointment:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to cancel appointment in database: ${err.message || "Unknown error"}`);
+        }
         isPostgresAvailable = false;
       }
+    } else if (shouldEnforceDurablePersistence()) {
+      throw new Error("DATABASE_PERSISTENCE_FAILED: Database connection to Neon PostgreSQL is unavailable.");
     }
 
     const memApt = memoryDb.appointments.find((a) => a.id === id);
@@ -4127,9 +4194,15 @@ export const dbRepo = {
           },
         });
         return updated;
-      } catch {
+      } catch (err: any) {
+        if (shouldEnforceDurablePersistence()) {
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during rescheduleAppointment:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to reschedule appointment in database: ${err.message || "Unknown error"}`);
+        }
         isPostgresAvailable = false;
       }
+    } else if (shouldEnforceDurablePersistence()) {
+      throw new Error("DATABASE_PERSISTENCE_FAILED: Database connection to Neon PostgreSQL is unavailable.");
     }
 
     const memApt = memoryDb.appointments.find((a) => a.id === id);
@@ -4141,6 +4214,78 @@ export const dbRepo = {
       memApt.updatedAt = new Date();
     }
     return memApt || apt;
+  },
+
+  // -----------------------------------------------------------
+  // APPOINTMENT RESERVATION EXPIRY (SAFE DATABASE-BACKED WORKFLOW)
+  // -----------------------------------------------------------
+  async expireAbandonedOnlineReservations(timeoutMinutes: number = 60) {
+    const cutoffTime = new Date(Date.now() - timeoutMinutes * 60 * 1000);
+    const expiredCount = { dbCount: 0, memCount: 0 };
+
+    if (await canUsePrisma()) {
+      try {
+        // Only expire online website reservations that are strictly PENDING and UNPAID
+        // Never touch PHONE_CALL, WALK_IN, or partially/fully paid bookings
+        const staleApts = await prisma.appointment.findMany({
+          where: {
+            source: BookingSource.ONLINE_WEBSITE,
+            status: AppointmentStatus.PENDING,
+            paymentStatus: PaymentStatus.UNPAID,
+            createdAt: { lt: cutoffTime },
+          },
+          select: { id: true, appointmentNumber: true },
+        });
+
+        if (staleApts.length > 0) {
+          const ids = staleApts.map((a) => a.id);
+          const updateResult = await prisma.appointment.updateMany({
+            where: { id: { in: ids } },
+            data: {
+              status: AppointmentStatus.CANCELLED,
+              adminNotes: `Automated reservation expiry: Online payment was not completed within the ${timeoutMinutes}-minute checkout window.`,
+            },
+          });
+          expiredCount.dbCount = updateResult.count;
+
+          for (const apt of staleApts) {
+            await this.logAudit({
+              action: "APPOINTMENT_RESERVATION_EXPIRED",
+              entity: "Appointment",
+              entityId: apt.appointmentNumber,
+              details: JSON.stringify({
+                reason: "ONLINE_CHECKOUT_TIMEOUT",
+                timeoutMinutes,
+                expiredAt: new Date().toISOString(),
+              }),
+            });
+          }
+        }
+      } catch (err: any) {
+        if (shouldEnforceDurablePersistence()) {
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during expireAbandonedOnlineReservations:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to expire reservations in database: ${err.message || "Unknown error"}`);
+        }
+        isPostgresAvailable = false;
+      }
+    }
+
+    // Memory DB expiration
+    const memStale = memoryDb.appointments.filter(
+      (a) =>
+        a.source === BookingSource.ONLINE_WEBSITE &&
+        a.status === AppointmentStatus.PENDING &&
+        a.paymentStatus === PaymentStatus.UNPAID &&
+        a.createdAt < cutoffTime
+    );
+    for (const apt of memStale) {
+      apt.status = AppointmentStatus.CANCELLED;
+      apt.adminNotes = `Automated reservation expiry: Online payment was not completed within the ${timeoutMinutes}-minute checkout window.`;
+      apt.updatedAt = new Date();
+      expiredCount.memCount++;
+    }
+
+    return expiredCount;
   },
 
   // -----------------------------------------------------------
@@ -4339,43 +4484,101 @@ export const dbRepo = {
     name: string;
     phone: string;
     email?: string | null;
-    serviceInterest?: string;
+    serviceInterest?: string | null;
     type?: string;
+    source?: string;
     message: string;
+    enquiryNumber?: string;
+    emailStatus?: string;
+    googleSheetsStatus?: string;
   }) {
+    const dateCompact = getKolkataDateString().replace(/-/g, "");
+    const seq4 = String((memoryDb.enquiries.length + 1) % 10000).padStart(4, "0");
+    const enquiryNumber = data.enquiryNumber || `ENQ-${dateCompact}-${seq4}`;
+    const source = data.source || "Website Contact Form";
+    const emailStatus = data.emailStatus || "PENDING";
+    const googleSheetsStatus = data.googleSheetsStatus || "PENDING";
+
     if (await canUsePrisma()) {
       try {
         const enquiry = await prisma.enquiry.create({
           data: {
+            enquiryNumber,
             name: data.name,
             phone: data.phone,
             email: data.email || null,
             serviceInterest: data.serviceInterest || null,
             type: data.type || "GENERAL",
+            source,
             message: data.message,
             status: EnquiryStatus.NEW,
+            emailStatus,
+            googleSheetsStatus,
           },
         });
         return enquiry;
-      } catch {
-        isPostgresAvailable = false;
+      } catch (prismaErr) {
+        // Fallback for partial schema if migration pending
+        try {
+          const fallbackEnquiry = await prisma.enquiry.create({
+            data: {
+              name: data.name,
+              phone: data.phone,
+              email: data.email || null,
+              serviceInterest: data.serviceInterest || null,
+              type: data.type || "GENERAL",
+              message: data.message,
+              status: EnquiryStatus.NEW,
+            },
+          });
+          return {
+            ...fallbackEnquiry,
+            enquiryNumber,
+            source,
+            emailStatus,
+            googleSheetsStatus,
+          };
+        } catch {
+          isPostgresAvailable = false;
+        }
       }
     }
 
     const memEnquiry: MemoryEnquiry = {
       id: `enq_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      enquiryNumber,
       name: data.name,
       phone: data.phone,
       email: data.email || null,
       serviceInterest: data.serviceInterest || null,
       type: data.type || "GENERAL",
+      source,
       message: data.message,
       status: EnquiryStatus.NEW,
+      emailStatus,
+      googleSheetsStatus,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
     memoryDb.enquiries.unshift(memEnquiry);
     return memEnquiry;
+  },
+
+  async getEnquiryById(id: string) {
+    if (await canUsePrisma()) {
+      try {
+        const enq = await prisma.enquiry.findFirst({
+          where: {
+            OR: [{ id }, { enquiryNumber: id }],
+          },
+        });
+        if (enq) return enq;
+      } catch {
+        isPostgresAvailable = false;
+      }
+    }
+
+    return memoryDb.enquiries.find((e) => e.id === id || e.enquiryNumber === id) || null;
   },
 
   // -----------------------------------------------------------
@@ -4853,8 +5056,14 @@ export const dbRepo = {
           remainingBalance: remainingAggregate._sum.remainingAmount || 0,
           recentCustomers,
           popularServices,
-          recentBookings,
-          upcomingAppointments,
+          recentBookings: recentBookings.map((b) => ({
+            ...b,
+            appointmentDate: b.appointmentDate instanceof Date ? getKolkataDateString(b.appointmentDate) : String(b.appointmentDate || ""),
+          })),
+          upcomingAppointments: upcomingAppointments.map((b) => ({
+            ...b,
+            appointmentDate: b.appointmentDate instanceof Date ? getKolkataDateString(b.appointmentDate) : String(b.appointmentDate || ""),
+          })),
           recentEnquiries,
           monthlyTrends,
         };
@@ -6344,6 +6553,33 @@ export const dbRepo = {
     return { offlineRecord: record, transaction: tx, appointment: memApt || apt };
   },
 
+  async getOfflinePayments(appointmentId?: string) {
+    if (await canUsePrisma()) {
+      try {
+        const where = appointmentId ? { appointmentId } : {};
+        return await (prisma as any).offlinePaymentRecord.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+        });
+      } catch {}
+    }
+    if (appointmentId) {
+      return memoryDb.offlinePayments.filter((p) => p.appointmentId === appointmentId);
+    }
+    return memoryDb.offlinePayments;
+  },
+
+  async getOfflinePaymentById(id: string) {
+    if (await canUsePrisma()) {
+      try {
+        return await (prisma as any).offlinePaymentRecord.findUnique({
+          where: { id },
+        });
+      } catch {}
+    }
+    return memoryDb.offlinePayments.find((p) => p.id === id) || null;
+  },
+
   async collectRemainingSalonPayment(data: {
     appointmentId: string;
     amount: number;
@@ -7152,9 +7388,15 @@ export const dbRepo = {
           data: { notes },
         });
         return updated;
-      } catch {
+      } catch (err: any) {
+        if (shouldEnforceDurablePersistence()) {
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during cancelAppointment:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to cancel appointment in database: ${err.message || "Unknown error"}`);
+        }
         isPostgresAvailable = false;
       }
+    } else if (shouldEnforceDurablePersistence()) {
+      throw new Error("DATABASE_PERSISTENCE_FAILED: Database connection to Neon PostgreSQL is unavailable.");
     }
 
     const prof = memoryDb.customerProfiles.find((p) => p.id === profileId);
@@ -7258,9 +7500,15 @@ export const dbRepo = {
           data: data as any,
         });
         return updated;
-      } catch {
+      } catch (err: any) {
+        if (shouldEnforceDurablePersistence()) {
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during cancelAppointment:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to cancel appointment in database: ${err.message || "Unknown error"}`);
+        }
         isPostgresAvailable = false;
       }
+    } else if (shouldEnforceDurablePersistence()) {
+      throw new Error("DATABASE_PERSISTENCE_FAILED: Database connection to Neon PostgreSQL is unavailable.");
     }
 
     const srv = memoryDb.services.find((s) => s.id === id);
@@ -7381,9 +7629,15 @@ export const dbRepo = {
           });
         }
         return updated;
-      } catch {
+      } catch (err: any) {
+        if (shouldEnforceDurablePersistence()) {
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during cancelAppointment:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to cancel appointment in database: ${err.message || "Unknown error"}`);
+        }
         isPostgresAvailable = false;
       }
+    } else if (shouldEnforceDurablePersistence()) {
+      throw new Error("DATABASE_PERSISTENCE_FAILED: Database connection to Neon PostgreSQL is unavailable.");
     }
 
     const stf = memoryDb.staff.find((s) => s.id === id);
@@ -7502,9 +7756,15 @@ export const dbRepo = {
           data,
         });
         return updated;
-      } catch {
+      } catch (err: any) {
+        if (shouldEnforceDurablePersistence()) {
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during cancelAppointment:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to cancel appointment in database: ${err.message || "Unknown error"}`);
+        }
         isPostgresAvailable = false;
       }
+    } else if (shouldEnforceDurablePersistence()) {
+      throw new Error("DATABASE_PERSISTENCE_FAILED: Database connection to Neon PostgreSQL is unavailable.");
     }
 
     const img = memoryDb.galleryImages.find((g) => g.id === id);
@@ -7535,6 +7795,7 @@ export const dbRepo = {
       const stf = memoryDb.staff.find((s) => s.id === t.staffId);
       return {
         ...t,
+        category: (t as any).category || srv?.name || "Hair & Makeover",
         service: srv || null,
         staff: stf ? { ...stf, user: { name: stf.name } } : null,
       };
@@ -7557,7 +7818,10 @@ export const dbRepo = {
             sortOrder: data.sortOrder || 0,
           },
         });
-        return created;
+        return {
+          ...created,
+          category: data.category || "Hair & Makeover",
+        };
       } catch (err) {
         console.error("Prisma createTransformation error:", err);
       }
@@ -7571,9 +7835,10 @@ export const dbRepo = {
       afterImageUrl: data.afterImageUrl,
       serviceId: data.serviceId || null,
       staffId: data.staffId || null,
-      clientGender: data.clientGender,
-      isFeatured: data.isFeatured,
-      sortOrder: data.sortOrder,
+      category: data.category || "Hair & Makeover",
+      clientGender: data.clientGender || GenderTarget.UNISEX,
+      isFeatured: data.isFeatured !== undefined ? data.isFeatured : true,
+      sortOrder: data.sortOrder || 0,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -7714,9 +7979,15 @@ export const dbRepo = {
           },
         });
         return updated;
-      } catch {
+      } catch (err: any) {
+        if (shouldEnforceDurablePersistence()) {
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during cancelAppointment:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to cancel appointment in database: ${err.message || "Unknown error"}`);
+        }
         isPostgresAvailable = false;
       }
+    } else if (shouldEnforceDurablePersistence()) {
+      throw new Error("DATABASE_PERSISTENCE_FAILED: Database connection to Neon PostgreSQL is unavailable.");
     }
 
     const rev = memoryDb.reviews.find((r) => r.id === id);
@@ -7813,9 +8084,15 @@ export const dbRepo = {
           } as any,
         });
         return updated;
-      } catch {
+      } catch (err: any) {
+        if (shouldEnforceDurablePersistence()) {
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during cancelAppointment:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to cancel appointment in database: ${err.message || "Unknown error"}`);
+        }
         isPostgresAvailable = false;
       }
+    } else if (shouldEnforceDurablePersistence()) {
+      throw new Error("DATABASE_PERSISTENCE_FAILED: Database connection to Neon PostgreSQL is unavailable.");
     }
 
     const off = memoryDb.offers.find((o) => o.id === id);
@@ -7899,9 +8176,15 @@ export const dbRepo = {
           data: data as any,
         });
         return updated;
-      } catch {
+      } catch (err: any) {
+        if (shouldEnforceDurablePersistence()) {
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during cancelAppointment:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to cancel appointment in database: ${err.message || "Unknown error"}`);
+        }
         isPostgresAvailable = false;
       }
+    } else if (shouldEnforceDurablePersistence()) {
+      throw new Error("DATABASE_PERSISTENCE_FAILED: Database connection to Neon PostgreSQL is unavailable.");
     }
 
     const pkg = memoryDb.packages.find((p) => p.id === id);
@@ -7991,9 +8274,15 @@ export const dbRepo = {
           } as any,
         });
         return updated;
-      } catch {
+      } catch (err: any) {
+        if (shouldEnforceDurablePersistence()) {
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during cancelAppointment:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to cancel appointment in database: ${err.message || "Unknown error"}`);
+        }
         isPostgresAvailable = false;
       }
+    } else if (shouldEnforceDurablePersistence()) {
+      throw new Error("DATABASE_PERSISTENCE_FAILED: Database connection to Neon PostgreSQL is unavailable.");
     }
 
     const cpn = memoryDb.coupons.find((c) => c.id === id);
@@ -8086,9 +8375,15 @@ export const dbRepo = {
           data,
         });
         return updated;
-      } catch {
+      } catch (err: any) {
+        if (shouldEnforceDurablePersistence()) {
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during cancelAppointment:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to cancel appointment in database: ${err.message || "Unknown error"}`);
+        }
         isPostgresAvailable = false;
       }
+    } else if (shouldEnforceDurablePersistence()) {
+      throw new Error("DATABASE_PERSISTENCE_FAILED: Database connection to Neon PostgreSQL is unavailable.");
     }
 
     const v = memoryDb.videos.find((x) => x.id === id);
@@ -8172,9 +8467,15 @@ export const dbRepo = {
           data,
         });
         return updated;
-      } catch {
+      } catch (err: any) {
+        if (shouldEnforceDurablePersistence()) {
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during cancelAppointment:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to cancel appointment in database: ${err.message || "Unknown error"}`);
+        }
         isPostgresAvailable = false;
       }
+    } else if (shouldEnforceDurablePersistence()) {
+      throw new Error("DATABASE_PERSISTENCE_FAILED: Database connection to Neon PostgreSQL is unavailable.");
     }
 
     const b = memoryDb.brands.find((x) => x.id === id);
@@ -8265,9 +8566,15 @@ export const dbRepo = {
           data,
         });
         return updated;
-      } catch {
+      } catch (err: any) {
+        if (shouldEnforceDurablePersistence()) {
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during cancelAppointment:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to cancel appointment in database: ${err.message || "Unknown error"}`);
+        }
         isPostgresAvailable = false;
       }
+    } else if (shouldEnforceDurablePersistence()) {
+      throw new Error("DATABASE_PERSISTENCE_FAILED: Database connection to Neon PostgreSQL is unavailable.");
     }
 
     const f = memoryDb.faqs.find((x) => x.id === id);
@@ -8295,10 +8602,22 @@ export const dbRepo = {
   // -----------------------------------------------------------
   // 15. ENQUIRIES & LEADS MANAGEMENT
   // -----------------------------------------------------------
-  async getAllEnquiries(status?: string) {
+  async getAllEnquiries(status?: string, search?: string) {
     if (await canUsePrisma()) {
       try {
-        const where = status && status !== "ALL" ? { status: status as EnquiryStatus } : {};
+        const where: any = {};
+        if (status && status !== "ALL") where.status = status as EnquiryStatus;
+        if (search && search.trim()) {
+          const q = search.trim();
+          where.OR = [
+            { name: { contains: q, mode: "insensitive" } },
+            { phone: { contains: q } },
+            { email: { contains: q, mode: "insensitive" } },
+            { serviceInterest: { contains: q, mode: "insensitive" } },
+            { message: { contains: q, mode: "insensitive" } },
+            { enquiryNumber: { contains: q, mode: "insensitive" } },
+          ];
+        }
         const enquiries = await prisma.enquiry.findMany({
           where,
           orderBy: { createdAt: "desc" },
@@ -8309,34 +8628,86 @@ export const dbRepo = {
       }
     }
 
+    let list = memoryDb.enquiries;
     if (status && status !== "ALL") {
-      return memoryDb.enquiries.filter((e) => e.status === status);
+      list = list.filter((e) => e.status === status);
     }
-    return memoryDb.enquiries;
+    if (search && search.trim()) {
+      const q = search.trim().toLowerCase();
+      list = list.filter(
+        (e) =>
+          e.name.toLowerCase().includes(q) ||
+          e.phone.includes(q) ||
+          (e.email && e.email.toLowerCase().includes(q)) ||
+          (e.serviceInterest && e.serviceInterest.toLowerCase().includes(q)) ||
+          e.message.toLowerCase().includes(q) ||
+          (e.enquiryNumber && e.enquiryNumber.toLowerCase().includes(q))
+      );
+    }
+    return list;
   },
 
-  async updateEnquiry(id: string, data: AdminEnquiryUpdateInput) {
+  async updateEnquiry(
+    id: string,
+    data: Partial<AdminEnquiryUpdateInput> & {
+      emailStatus?: string;
+      googleSheetsStatus?: string;
+      emailSentAt?: Date | null;
+      sheetsSyncedAt?: Date | null;
+      lastError?: string | null;
+    }
+  ) {
     if (await canUsePrisma()) {
       try {
+        const updateData: Record<string, any> = {};
+        if (data.status) updateData.status = data.status;
+        if (data.adminNotes !== undefined) updateData.adminNotes = data.adminNotes ?? null;
+        if (data.emailStatus !== undefined) updateData.emailStatus = data.emailStatus;
+        if (data.googleSheetsStatus !== undefined) updateData.googleSheetsStatus = data.googleSheetsStatus;
+        if (data.emailSentAt !== undefined) updateData.emailSentAt = data.emailSentAt;
+        if (data.sheetsSyncedAt !== undefined) updateData.sheetsSyncedAt = data.sheetsSyncedAt;
+        if (data.lastError !== undefined) updateData.lastError = data.lastError;
+
         const updated = await prisma.enquiry.update({
           where: { id },
-          data: {
-            status: data.status,
-            adminNotes: data.adminNotes ?? undefined,
-          },
+          data: updateData,
         });
         return updated;
-      } catch {
+      } catch (err: any) {
+        // Fallback for minimal schema if migration not yet applied
+        try {
+          const minimalData: Record<string, any> = {};
+          if (data.status) minimalData.status = data.status;
+          if (data.adminNotes !== undefined) minimalData.adminNotes = data.adminNotes ?? null;
+          const updated = await prisma.enquiry.update({
+            where: { id },
+            data: minimalData,
+          });
+          return {
+            ...updated,
+            ...data,
+          };
+        } catch {}
+
+        if (shouldEnforceDurablePersistence()) {
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during updateEnquiry:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to update enquiry in database: ${err.message || "Unknown error"}`);
+        }
         isPostgresAvailable = false;
       }
+    } else if (shouldEnforceDurablePersistence()) {
+      throw new Error("DATABASE_PERSISTENCE_FAILED: Database connection to Neon PostgreSQL is unavailable.");
     }
 
-    const enq = memoryDb.enquiries.find((e) => e.id === id);
+    const enq = memoryDb.enquiries.find((e) => e.id === id || e.enquiryNumber === id);
     if (!enq) throw new Error("Enquiry not found");
-    enq.status = data.status;
-    if (data.adminNotes !== undefined) {
-      enq.adminNotes = data.adminNotes;
-    }
+    if (data.status) enq.status = data.status;
+    if (data.adminNotes !== undefined) enq.adminNotes = data.adminNotes;
+    if (data.emailStatus !== undefined) enq.emailStatus = data.emailStatus;
+    if (data.googleSheetsStatus !== undefined) enq.googleSheetsStatus = data.googleSheetsStatus;
+    if (data.emailSentAt !== undefined) enq.emailSentAt = data.emailSentAt;
+    if (data.sheetsSyncedAt !== undefined) enq.sheetsSyncedAt = data.sheetsSyncedAt;
+    if (data.lastError !== undefined) enq.lastError = data.lastError;
     enq.updatedAt = new Date();
     return enq;
   },
@@ -8793,6 +9164,280 @@ export const dbRepo = {
       createdAt: new Date(),
       updatedAt: new Date(),
     }));
+  },
+
+  // -----------------------------------------------------------
+  // TRANSACTIONAL EMAIL & NOTIFICATION OUTBOX
+  // -----------------------------------------------------------
+  async recordEmailEvent(data: {
+    appointmentId?: string | null;
+    paymentRecordId?: string | null;
+    offlinePaymentId?: string | null;
+    customerEmail: string;
+    customerName?: string | null;
+    eventType: EmailEventType;
+    idempotencyKey: string;
+    subject: string;
+    bodyText?: string | null;
+    metadata?: any;
+  }): Promise<{ isDuplicate: boolean; emailLog: any }> {
+    const cleanEmail = data.customerEmail.trim().toLowerCase();
+    const metaStr = data.metadata ? JSON.stringify(data.metadata) : null;
+
+    if (await canUsePrisma()) {
+      try {
+        const existing = await (prisma as any).emailLog.findUnique({
+          where: { idempotencyKey: data.idempotencyKey },
+        });
+
+        if (existing) {
+          if (["ACCEPTED", "SENT"].includes(existing.deliveryStatus)) {
+            return { isDuplicate: true, emailLog: existing };
+          }
+          const updated = await (prisma as any).emailLog.update({
+            where: { id: existing.id },
+            data: {
+              attemptCount: { increment: 1 },
+              deliveryStatus: EmailDeliveryStatus.PENDING,
+              updatedAt: new Date(),
+            },
+          });
+          return { isDuplicate: false, emailLog: updated };
+        }
+
+        const created = await (prisma as any).emailLog.create({
+          data: {
+            appointmentId: data.appointmentId || null,
+            paymentRecordId: data.paymentRecordId || null,
+            offlinePaymentId: data.offlinePaymentId || null,
+            customerEmail: cleanEmail,
+            customerName: data.customerName || null,
+            eventType: data.eventType,
+            deliveryStatus: EmailDeliveryStatus.PENDING,
+            attemptCount: 1,
+            idempotencyKey: data.idempotencyKey,
+            subject: data.subject,
+            bodyText: data.bodyText || null,
+            metadata: metaStr,
+          },
+        });
+        return { isDuplicate: false, emailLog: created };
+      } catch (err) {
+        console.warn("[PRISMA_RECORD_EMAIL_EVENT_FALLBACK]", err);
+      }
+    }
+
+    // Memory fallback
+    const memExisting = memoryDb.emailLogs.find((l) => l.idempotencyKey === data.idempotencyKey);
+    if (memExisting) {
+      if (["ACCEPTED", "SENT"].includes(memExisting.deliveryStatus)) {
+        return { isDuplicate: true, emailLog: memExisting };
+      }
+      memExisting.attemptCount += 1;
+      memExisting.deliveryStatus = EmailDeliveryStatus.PENDING;
+      memExisting.updatedAt = new Date();
+      return { isDuplicate: false, emailLog: memExisting };
+    }
+
+    const newLog: MemoryEmailLog = {
+      id: `eml_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      appointmentId: data.appointmentId || null,
+      paymentRecordId: data.paymentRecordId || null,
+      offlinePaymentId: data.offlinePaymentId || null,
+      customerEmail: cleanEmail,
+      customerName: data.customerName || null,
+      eventType: data.eventType,
+      deliveryStatus: EmailDeliveryStatus.PENDING,
+      attemptCount: 1,
+      idempotencyKey: data.idempotencyKey,
+      subject: data.subject,
+      bodyText: data.bodyText || null,
+      lastError: null,
+      providerMessageId: null,
+      provider: "RESEND",
+      sentAt: null,
+      metadata: metaStr,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    memoryDb.emailLogs.push(newLog);
+    return { isDuplicate: false, emailLog: newLog };
+  },
+
+  async updateEmailLogStatus(
+    id: string,
+    update: {
+      deliveryStatus: EmailDeliveryStatus;
+      providerMessageId?: string | null;
+      lastError?: string | null;
+      sentAt?: Date | null;
+      attemptIncrement?: boolean;
+    }
+  ) {
+    if (await canUsePrisma()) {
+      try {
+        const updated = await (prisma as any).emailLog.update({
+          where: { id },
+          data: {
+            deliveryStatus: update.deliveryStatus,
+            providerMessageId: update.providerMessageId !== undefined ? update.providerMessageId : undefined,
+            lastError: update.lastError !== undefined ? update.lastError : undefined,
+            sentAt: update.sentAt !== undefined ? update.sentAt : undefined,
+            ...(update.attemptIncrement ? { attemptCount: { increment: 1 } } : {}),
+            updatedAt: new Date(),
+          },
+        });
+        return updated;
+      } catch (err) {
+        console.warn("[PRISMA_UPDATE_EMAIL_LOG_FALLBACK]", err);
+      }
+    }
+
+    const memLog = memoryDb.emailLogs.find((l) => l.id === id);
+    if (memLog) {
+      memLog.deliveryStatus = update.deliveryStatus;
+      if (update.providerMessageId !== undefined) memLog.providerMessageId = update.providerMessageId;
+      if (update.lastError !== undefined) memLog.lastError = update.lastError;
+      if (update.sentAt !== undefined) memLog.sentAt = update.sentAt;
+      if (update.attemptIncrement) memLog.attemptCount += 1;
+      memLog.updatedAt = new Date();
+      return memLog;
+    }
+    return null;
+  },
+
+  async getEmailLogs(filter?: {
+    appointmentId?: string;
+    customerEmail?: string;
+    eventType?: EmailEventType;
+    deliveryStatus?: EmailDeliveryStatus;
+    limit?: number;
+  }) {
+    const limit = filter?.limit || 50;
+
+    if (await canUsePrisma()) {
+      try {
+        const where: any = {};
+        if (filter?.appointmentId) where.appointmentId = filter.appointmentId;
+        if (filter?.customerEmail) where.customerEmail = filter.customerEmail.toLowerCase().trim();
+        if (filter?.eventType) where.eventType = filter.eventType;
+        if (filter?.deliveryStatus) where.deliveryStatus = filter.deliveryStatus;
+
+        const logs = await (prisma as any).emailLog.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+          take: limit,
+          include: {
+            appointment: {
+              select: {
+                appointmentNumber: true,
+                customerName: true,
+                appointmentDate: true,
+                startTime: true,
+                status: true,
+              },
+            },
+          },
+        });
+        return logs;
+      } catch (err) {
+        console.warn("[PRISMA_GET_EMAIL_LOGS_FALLBACK]", err);
+      }
+    }
+
+    let results = [...memoryDb.emailLogs];
+    if (filter?.appointmentId) {
+      results = results.filter((l) => l.appointmentId === filter.appointmentId);
+    }
+    if (filter?.customerEmail) {
+      const target = filter.customerEmail.toLowerCase().trim();
+      results = results.filter((l) => l.customerEmail.toLowerCase() === target);
+    }
+    if (filter?.eventType) {
+      results = results.filter((l) => l.eventType === filter.eventType);
+    }
+    if (filter?.deliveryStatus) {
+      results = results.filter((l) => l.deliveryStatus === filter.deliveryStatus);
+    }
+    results.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    return results.slice(0, limit);
+  },
+
+  async getEmailLogById(id: string) {
+    if (await canUsePrisma()) {
+      try {
+        const log = await (prisma as any).emailLog.findUnique({
+          where: { id },
+          include: { appointment: true },
+        });
+        if (log) return log;
+      } catch {}
+    }
+    return memoryDb.emailLogs.find((l) => l.id === id) || null;
+  },
+
+  async getEligibleAppointmentsForReminder(windowMinutes: number = 75) {
+    const todayKolkata = getKolkataDateString();
+    const timeKolkata = getKolkataTimeString();
+
+    const [currH, currM] = timeKolkata.split(":").map(Number);
+    const nowMinutes = currH * 60 + currM;
+    const windowEndMinutes = nowMinutes + windowMinutes;
+
+    if (await canUsePrisma()) {
+      try {
+        const activeAppointments = await prisma.appointment.findMany({
+          where: {
+            status: { in: [AppointmentStatus.CONFIRMED, AppointmentStatus.PENDING] },
+            appointmentDate: {
+              gte: new Date(`${todayKolkata}T00:00:00.000Z`),
+              lte: new Date(`${todayKolkata}T23:59:59.999Z`),
+            },
+          },
+          include: {
+            appointmentServices: { include: { service: true } },
+            package: true,
+            emailLogs: {
+              where: {
+                eventType: EmailEventType.APPOINTMENT_REMINDER,
+                deliveryStatus: { in: [EmailDeliveryStatus.ACCEPTED, EmailDeliveryStatus.SENT] },
+              },
+            },
+          },
+        });
+
+        return activeAppointments.filter((apt) => {
+          if (!apt.startTime || !apt.customerEmail) return false;
+          if (apt.emailLogs && apt.emailLogs.length > 0) return false;
+
+          const [aptH, aptM] = apt.startTime.split(":").map(Number);
+          const aptMinutes = aptH * 60 + aptM;
+
+          return aptMinutes >= nowMinutes - 15 && aptMinutes <= windowEndMinutes;
+        });
+      } catch (err) {
+        console.warn("[PRISMA_GET_ELIGIBLE_REMINDERS_FALLBACK]", err);
+      }
+    }
+
+    return memoryDb.appointments.filter((apt) => {
+      if (!apt.startTime || !apt.customerEmail) return false;
+      if (![AppointmentStatus.CONFIRMED, AppointmentStatus.PENDING].includes(apt.status as any)) return false;
+      if (apt.appointmentDate !== todayKolkata) return false;
+
+      const [aptH, aptM] = apt.startTime.split(":").map(Number);
+      const aptMinutes = aptH * 60 + aptM;
+
+      const hasSent = memoryDb.emailLogs.some(
+        (l) =>
+          l.appointmentId === apt.id &&
+          l.eventType === EmailEventType.APPOINTMENT_REMINDER &&
+          ["ACCEPTED", "SENT"].includes(l.deliveryStatus)
+      );
+      if (hasSent) return false;
+
+      return aptMinutes >= nowMinutes - 15 && aptMinutes <= windowEndMinutes;
+    });
   },
 
   _memoryDb: memoryDb,

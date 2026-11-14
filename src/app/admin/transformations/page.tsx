@@ -321,23 +321,27 @@ export default function AdminTransformationsPage() {
               >
                 {/* Before & After Dual Images */}
                 <div className="grid grid-cols-2 gap-1 bg-zinc-900 relative">
-                  <div className="relative aspect-square w-full bg-zinc-950">
-                    <img
+                  <div className="relative aspect-square w-full bg-zinc-950 overflow-hidden">
+                    <Image
                       src={t.beforeImageUrl}
                       alt="Before"
-                      className="w-full h-full object-cover"
+                      fill
+                      sizes="(max-width: 768px) 50vw, 200px"
+                      className="object-cover"
                     />
-                    <span className="absolute bottom-1.5 left-1.5 px-2 py-0.5 rounded bg-black/80 text-[10px] font-bold text-zinc-300 border border-zinc-800">
+                    <span className="absolute bottom-1.5 left-1.5 px-2 py-0.5 rounded bg-black/80 text-[10px] font-bold text-zinc-300 border border-zinc-800 z-10">
                       BEFORE
                     </span>
                   </div>
-                  <div className="relative aspect-square w-full bg-zinc-950">
-                    <img
+                  <div className="relative aspect-square w-full bg-zinc-950 overflow-hidden">
+                    <Image
                       src={t.afterImageUrl}
                       alt="After"
-                      className="w-full h-full object-cover"
+                      fill
+                      sizes="(max-width: 768px) 50vw, 200px"
+                      className="object-cover"
                     />
-                    <span className="absolute bottom-1.5 right-1.5 px-2 py-0.5 rounded bg-black/80 text-[10px] font-bold text-salon-gold border border-salon-gold/40">
+                    <span className="absolute bottom-1.5 right-1.5 px-2 py-0.5 rounded bg-black/80 text-[10px] font-bold text-salon-gold border border-salon-gold/40 z-10">
                       AFTER
                     </span>
                   </div>
@@ -589,13 +593,15 @@ export default function AdminTransformationsPage() {
                             </div>
                           ) : (
                             <>
-                              <img
+                              <Image
                                 src={formData.beforeImageUrl}
                                 alt="Before Preview"
+                                fill
+                                unoptimized
                                 onError={() => setBeforeImgError(true)}
-                                className="w-full h-full object-cover"
+                                className="object-cover"
                               />
-                              <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-black/80 text-[10px] font-bold text-zinc-300 border border-zinc-700 backdrop-blur-sm">
+                              <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-black/80 text-[10px] font-bold text-zinc-300 border border-zinc-700 backdrop-blur-sm z-10">
                                 BEFORE PREVIEW
                               </span>
                             </>
@@ -708,13 +714,15 @@ export default function AdminTransformationsPage() {
                             </div>
                           ) : (
                             <>
-                              <img
+                              <Image
                                 src={formData.afterImageUrl}
                                 alt="After Preview"
+                                fill
+                                unoptimized
                                 onError={() => setAfterImgError(true)}
-                                className="w-full h-full object-cover"
+                                className="object-cover"
                               />
-                              <span className="absolute bottom-2 right-2 px-2 py-0.5 rounded bg-black/80 text-[10px] font-bold text-salon-gold border border-salon-gold/50 backdrop-blur-sm">
+                              <span className="absolute bottom-2 right-2 px-2 py-0.5 rounded bg-black/80 text-[10px] font-bold text-salon-gold border border-salon-gold/50 backdrop-blur-sm z-10">
                                 AFTER PREVIEW
                               </span>
                             </>

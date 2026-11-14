@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { paymentVerifySchema } from "@/lib/validation/schemas";
 import dbRepo from "@/lib/db/repo";
+import emailService from "@/lib/email/service";
 import { verifyRazorpayPaymentSignature } from "@/lib/payments/razorpay";
 
 export const runtime = "nodejs";
@@ -99,6 +100,16 @@ export async function POST(req: NextRequest) {
       razorpaySignature: signature,
       signatureValid: true,
     });
+
+    // Asynchronously dispatch Payment Receipt Email with Attached Vector PDF
+    emailService
+      .sendPaymentReceipt({
+        appointmentId,
+        transactionId: result.payment?.id,
+      })
+      .catch((emailErr) => {
+        console.warn("[PAYMENT_RECEIPT_EMAIL_DISPATCH_BACKGROUND_ERROR]", emailErr?.message);
+      });
 
     return NextResponse.json({
       success: true,
