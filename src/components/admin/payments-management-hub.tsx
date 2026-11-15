@@ -367,8 +367,8 @@ export function PaymentsManagementHub() {
         </div>
       </div>
 
-      {/* Transactions Table */}
-      <div className="rounded-xl border border-salon-borderBlack bg-salon-richBlack/50 overflow-hidden shadow-lg">
+      {/* Transactions Table (Desktop / Tablet) */}
+      <div className="hidden md:block rounded-xl border border-salon-borderBlack bg-salon-richBlack/50 overflow-hidden shadow-lg">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="bg-salon-black/80 text-zinc-400 border-b border-salon-borderBlack uppercase tracking-wider text-[10px] font-semibold">
@@ -464,6 +464,111 @@ export function PaymentsManagementHub() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* Mobile Payment Cards (Smartphone Screens) */}
+      <div className="block md:hidden space-y-3">
+        {loading ? (
+          <div className="p-8 text-center text-zinc-500 rounded-xl border border-salon-borderBlack bg-salon-richBlack/50">
+            <div className="flex items-center justify-center gap-2">
+              <RotateCcw className="h-4 w-4 animate-spin text-salon-gold" />
+              <span>Loading payment transactions...</span>
+            </div>
+          </div>
+        ) : filteredPayments.length === 0 ? (
+          <div className="p-8 text-center text-zinc-500 rounded-xl border border-salon-borderBlack bg-salon-richBlack/50 text-xs">
+            No payment records found matching the filter.
+          </div>
+        ) : (
+          filteredPayments.map((p) => {
+            const isSuccess = p.status === "SUCCESS" || p.status === "CAPTURED";
+            const isFailed = p.status === "FAILED";
+
+            return (
+              <div
+                key={p.id}
+                className="rounded-xl border border-salon-borderBlack bg-salon-cardBlack p-4 space-y-3 shadow-md"
+              >
+                {/* Header: Ref + Status */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="font-mono font-bold text-white text-sm">
+                      {p.transactionRef}
+                    </span>
+                    {p.razorpayPaymentId && (
+                      <div className="text-[10px] text-salon-gold font-mono truncate max-w-[150px]">
+                        {p.razorpayPaymentId}
+                      </div>
+                    )}
+                  </div>
+                  <span
+                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                      isSuccess
+                        ? "bg-emerald-950/60 text-emerald-400 border border-emerald-800/60"
+                        : isFailed
+                        ? "bg-red-950/60 text-red-400 border border-red-800/60"
+                        : "bg-amber-950/60 text-amber-400 border border-amber-800/60"
+                    }`}
+                  >
+                    {p.status}
+                  </span>
+                </div>
+
+                {/* Booking Ref & Customer */}
+                <div className="flex items-center justify-between text-xs border-t border-zinc-800/60 pt-2.5">
+                  <div>
+                    <span className="text-[10px] text-zinc-500 block uppercase">Booking</span>
+                    <span className="font-mono font-semibold text-salon-gold">
+                      {p.appointmentNumber}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="font-semibold text-white block">
+                      {p.customerName || "Client"}
+                    </span>
+                    <span className="text-[11px] text-zinc-400 font-mono">
+                      {p.customerPhone}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Amount & Method Strip */}
+                <div className="flex items-center justify-between bg-black/40 rounded-lg p-2.5 border border-zinc-800/60 text-xs">
+                  <div>
+                    <span className="text-[10px] text-zinc-500 block uppercase">Amount</span>
+                    <span className="font-serif text-lg font-bold text-white">
+                      ₹{p.amount.toLocaleString("en-IN")}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-zinc-300 font-medium block">
+                      {p.paymentPurpose ? p.paymentPurpose.replace(/_/g, " ") : "PAYMENT"}
+                    </span>
+                    <span className="text-[10px] text-zinc-400 font-mono">
+                      {p.paymentMethod} • {p.environment}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Date & Actions */}
+                <div className="flex items-center justify-between pt-1 text-xs">
+                  <span className="text-zinc-500 font-mono text-[11px]">
+                    {new Date(p.createdAt).toLocaleString("en-IN")}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSelectedReceipt(p)}
+                    className="h-8 px-2.5 text-xs border-salon-gold/40 text-salon-gold hover:bg-salon-gold/10 gap-1.5"
+                  >
+                    <Receipt className="h-3.5 w-3.5" />
+                    <span>Receipt</span>
+                  </Button>
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
 
       {/* Record Counter Payment Modal */}

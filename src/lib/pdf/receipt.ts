@@ -50,7 +50,10 @@ export function generateReceiptPdfBuffer(receipt: PaymentReceiptEmailPayload): B
   // Right-aligned header badge
   add("BT /F2 12 Tf 0.776 0.647 0.420 rg 380 754 Td (PAYMENT RECEIPT) Tj ET");
   add("BT /F1 8 Tf 0.9 0.9 0.9 rg 380 738 Td (TAX INVOICE & VOUCHER) Tj ET");
-  add("BT /F1 7 Tf 0.7 0.7 0.7 rg 380 724 Td (GSTIN: 10AAACT0000A1Z5) Tj ET");
+  const gstinLabel = BRAND_CONFIG.legal.gstin
+    ? `GSTIN: ${BRAND_CONFIG.legal.gstin}`
+    : "GSTIN: Unregistered / Composition";
+  add(`BT /F1 7 Tf 0.7 0.7 0.7 rg 380 724 Td (${escapePdfText(gstinLabel)}) Tj ET`);
 
   // Metadata Grid Box
   add("0.95 0.95 0.94 rg 52 620 491.28 74 re f");

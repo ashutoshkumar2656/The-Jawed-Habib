@@ -33,6 +33,13 @@ const nextConfig = {
   },
 
   async headers() {
+    // In development mode, NEVER return long-lived or immutable caching headers.
+    // The Next.js development server and HMR must be allowed to manage fresh asset delivery
+    // without local browser disk cache collisions.
+    if (process.env.NODE_ENV !== "production") {
+      return [];
+    }
+
     return [
       {
         source: "/_next/static/:path*",

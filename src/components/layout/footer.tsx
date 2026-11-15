@@ -68,6 +68,16 @@ export function Footer() {
             </h4>
             <ul className="space-y-2.5 text-sm">
               <li>
+                <Link href="/about" className="hover:text-salon-gold transition-colors font-medium text-zinc-300">
+                  About Our Salon &amp; Heritage
+                </Link>
+              </li>
+              <li>
+                <Link href="/contact" className="hover:text-salon-gold transition-colors font-medium text-zinc-300">
+                  Contact Front Desk &amp; Location
+                </Link>
+              </li>
+              <li>
                 <Link href="/bridal" className="hover:text-salon-gold transition-colors font-medium text-salon-goldLight">
                   Bridal Suites &amp; Wedding Makeup
                 </Link>
@@ -196,12 +206,27 @@ export function Footer() {
               </a>
             </p>
           </div>
-          <div className="flex flex-wrap items-center justify-center gap-6">
-            <Link href="/privacy" className="hover:text-salon-gold transition-colors">
+          <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs">
+            <Link href="/about" className="hover:text-salon-gold transition-colors">
+              About Us
+            </Link>
+            <Link href="/contact" className="hover:text-salon-gold transition-colors">
+              Contact Us
+            </Link>
+            <Link href="/pricing" className="hover:text-salon-gold transition-colors">
+              Pricing Details
+            </Link>
+            <Link href="/terms-and-conditions" className="hover:text-salon-gold transition-colors">
+              Terms &amp; Conditions
+            </Link>
+            <Link href="/privacy-policy" className="hover:text-salon-gold transition-colors">
               Privacy Policy
             </Link>
-            <Link href="/terms" className="hover:text-salon-gold transition-colors">
-              Terms &amp; Conditions
+            <Link href="/cancellation-refund-policy" className="hover:text-salon-gold transition-colors">
+              Cancellation &amp; Refund Policy
+            </Link>
+            <Link href="/shipping-delivery-policy" className="hover:text-salon-gold transition-colors">
+              Shipping &amp; Delivery Policy
             </Link>
             <Link href="/booking" className="hover:text-salon-gold transition-colors">
               Online Booking

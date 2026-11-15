@@ -261,7 +261,7 @@ export const adminAppointmentStatusSchema = z.object({
 
 export const adminServiceSchema = z.object({
   name: z.string().min(2, "Service name required").max(100),
-  slug: z.string().min(2).max(100),
+  slug: z.string().max(100).optional().default(""),
   description: z.string().max(1000).optional().nullable(),
   detailedDescription: z.string().max(5000).optional().nullable(),
   price: z.number().min(0, "Price must be positive"),
@@ -385,7 +385,7 @@ export const calendarSettingsSchema = z.object({
 
 export const adminCategorySchema = z.object({
   name: z.string().min(2, "Category name required"),
-  slug: z.string().min(2),
+  slug: z.string().optional().default(""),
   description: z.string().optional().nullable(),
   imageUrl: z.string().optional().nullable(),
   iconName: z.string().optional().nullable(),
@@ -464,7 +464,7 @@ export const adminOfferSchema = z.object({
 
 export const adminPackageSchema = z.object({
   name: z.string().min(2, "Package name required"),
-  slug: z.string().min(2),
+  slug: z.string().optional().default(""),
   description: z.string().min(5),
   category: z.string().default("Special Packages").optional(),
   price: z.number().min(0),

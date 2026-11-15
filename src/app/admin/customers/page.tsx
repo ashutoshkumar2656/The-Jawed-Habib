@@ -274,8 +274,8 @@ export default function AdminCustomersPage() {
         )}
       </div>
 
-      {/* Customers Table */}
-      <div className="rounded-xl border border-salon-borderBlack bg-salon-richBlack/50 overflow-hidden shadow-lg">
+      {/* Customers Table (Desktop / Tablet) */}
+      <div className="hidden md:block rounded-xl border border-salon-borderBlack bg-salon-richBlack/50 overflow-hidden shadow-lg">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="bg-salon-black/80 text-zinc-400 border-b border-salon-borderBlack uppercase tracking-wider text-[10px] font-semibold">
@@ -382,6 +382,117 @@ export default function AdminCustomersPage() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* Mobile Customer Cards (Smartphone Screens) */}
+      <div className="block md:hidden space-y-3">
+        {loading ? (
+          <div className="p-8 text-center text-zinc-500 rounded-xl border border-salon-borderBlack bg-salon-richBlack/50">
+            <div className="flex items-center justify-center gap-2">
+              <RotateCcw className="h-4 w-4 animate-spin text-salon-gold" />
+              <span>Loading customer profiles...</span>
+            </div>
+          </div>
+        ) : customers.length === 0 ? (
+          <div className="p-8 text-center text-zinc-500 rounded-xl border border-salon-borderBlack bg-salon-richBlack/50 text-xs">
+            No customers found matching your search term.
+          </div>
+        ) : (
+          customers.map((c) => {
+            const tier = c.loyaltyTier || (c.totalSpent >= 10000 ? "VIP" : c.totalVisits >= 2 ? "REGULAR" : "NEW");
+            const balance = c.outstandingBalance || 0;
+
+            return (
+              <div
+                key={c.id}
+                className="rounded-xl border border-salon-borderBlack bg-salon-cardBlack p-4 space-y-3 shadow-md"
+              >
+                {/* Header: Name + Tier Badge */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-semibold text-white text-sm">{c.user.name}</h4>
+                    {c.user.email && (
+                      <span className="text-[10px] text-zinc-500 truncate block max-w-[200px]">
+                        {c.user.email}
+                      </span>
+                    )}
+                  </div>
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      tier === "VIP"
+                        ? "bg-amber-950/60 text-amber-400 border border-amber-800/60"
+                        : tier === "REGULAR"
+                        ? "bg-blue-950/60 text-blue-400 border border-blue-800/60"
+                        : "bg-zinc-800 text-zinc-400 border border-zinc-700"
+                    }`}
+                  >
+                    {tier}
+                  </span>
+                </div>
+
+                {/* Contact Row */}
+                <div className="flex items-center justify-between text-xs border-t border-zinc-800/60 pt-2.5">
+                  <div className="flex items-center gap-1.5 font-mono text-zinc-300">
+                    <Phone className="h-3.5 w-3.5 text-salon-gold" />
+                    <a
+                      href={`tel:+91${c.user.phone.replace(/\D/g, "")}`}
+                      className="text-salon-gold hover:underline"
+                    >
+                      {c.user.phone}
+                    </a>
+                  </div>
+                  <a
+                    href={`https://wa.me/91${c.user.phone.replace(/\D/g, "")}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-emerald-400 hover:text-emerald-300 text-xs px-2 py-1 rounded bg-emerald-950/40 border border-emerald-800/40"
+                  >
+                    <MessageCircle className="h-3 w-3" />
+                    <span>WhatsApp</span>
+                  </a>
+                </div>
+
+                {/* Statistics Grid */}
+                <div className="grid grid-cols-3 gap-2 bg-black/40 rounded-lg p-2.5 border border-zinc-800/60 text-center text-xs">
+                  <div>
+                    <span className="text-[10px] text-zinc-500 block uppercase">Visits</span>
+                    <span className="font-mono font-bold text-white">
+                      {c.completedVisits || c.totalVisits || 1}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-zinc-500 block uppercase">Spend</span>
+                    <span className="font-mono font-bold text-salon-gold">
+                      ₹{(c.totalSpent || 0).toLocaleString("en-IN")}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-zinc-500 block uppercase">Balance</span>
+                    <span className={`font-mono font-bold ${balance > 0 ? "text-purple-400" : "text-zinc-500"}`}>
+                      ₹{balance.toLocaleString("en-IN")}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Last Visit & Action */}
+                <div className="flex items-center justify-between pt-1 text-xs">
+                  <span className="text-zinc-500 text-[11px]">
+                    Last Visit: {c.lastVisitDate || c.lastAppointmentDate || "—"}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleOpenDetails(c)}
+                    className="h-8 px-2.5 text-xs border-zinc-700 hover:text-white gap-1.5"
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                    <span>View Profile</span>
+                  </Button>
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
 
       {/* Customer Profile & 4-Section Dossier Modal */}

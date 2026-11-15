@@ -32,7 +32,7 @@ export function ScrollToTop() {
     <button
       onClick={scrollToTop}
       className={cn(
-        "fixed bottom-6 right-6 z-40 flex h-11 w-11 items-center justify-center rounded-full border border-zinc-700 bg-zinc-950/80 text-zinc-300 shadow-xl backdrop-blur-md hover:border-salon-gold hover:text-salon-gold hover:scale-105 active:scale-95 transition-all duration-300"
+        "fixed bottom-[calc(1.5rem+env(safe-area-inset-bottom,0px))] right-4 sm:right-6 z-40 flex h-11 w-11 items-center justify-center rounded-full border border-zinc-700 bg-zinc-950/80 text-zinc-300 shadow-xl backdrop-blur-md hover:border-salon-gold hover:text-salon-gold hover:scale-105 active:scale-95 transition-all duration-300"
       )}
       aria-label="Scroll to top of page"
     >

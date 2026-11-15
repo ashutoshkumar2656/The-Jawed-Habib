@@ -24,6 +24,10 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { path: "/consultation", priority: 0.7, changeFrequency: "monthly" },
     { path: "/faq", priority: 0.7, changeFrequency: "monthly" },
     { path: "/team", priority: 0.6, changeFrequency: "monthly" },
+    { path: "/terms-and-conditions", priority: 0.4, changeFrequency: "monthly" },
+    { path: "/privacy-policy", priority: 0.4, changeFrequency: "monthly" },
+    { path: "/cancellation-refund-policy", priority: 0.4, changeFrequency: "monthly" },
+    { path: "/shipping-delivery-policy", priority: 0.4, changeFrequency: "monthly" },
     { path: "/terms", priority: 0.3, changeFrequency: "yearly" },
     { path: "/privacy", priority: 0.3, changeFrequency: "yearly" },
   ];

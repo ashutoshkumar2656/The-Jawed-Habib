@@ -2,9 +2,20 @@
 
 import * as React from "react";
 import { usePathname } from "next/navigation";
+import dynamic from "next/dynamic";
 import { AdminNavProvider } from "@/components/layout/admin-nav-context";
-import { AdminSidebar } from "@/components/layout/admin-sidebar";
-import { AdminTopbar } from "@/components/layout/admin-topbar";
+
+// Dynamically import the administrative chrome so that the login page (/admin/login)
+// is completely decoupled from dashboard navigation bundles and heavy icon sets.
+const AdminSidebar = dynamic(
+  () => import("@/components/layout/admin-sidebar").then((m) => m.AdminSidebar),
+  { ssr: true }
+);
+
+const AdminTopbar = dynamic(
+  () => import("@/components/layout/admin-topbar").then((m) => m.AdminTopbar),
+  { ssr: true }
+);
 
 export function AdminLayoutClient({
   children,
@@ -12,7 +23,7 @@ export function AdminLayoutClient({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const isLoginPage = pathname === "/admin/login";
+  const isLoginPage = pathname === "/admin/login" || pathname?.startsWith("/admin/login");
 
   if (isLoginPage) {
     return <div className="min-h-screen bg-salon-black text-salon-ivory">{children}</div>;

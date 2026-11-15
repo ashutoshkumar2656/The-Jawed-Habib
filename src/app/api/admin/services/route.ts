@@ -34,6 +34,16 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
+
+    // Normalize slug from name if omitted or empty
+    if (!body.slug || typeof body.slug !== "string" || !body.slug.trim()) {
+      body.slug = (body.name || "")
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/(^-|-$)/g, "");
+    }
+
     const validation = adminServiceSchema.safeParse(body);
     if (!validation.success) {
       return NextResponse.json({ success: false, errors: validation.error.format() }, { status: 400 });

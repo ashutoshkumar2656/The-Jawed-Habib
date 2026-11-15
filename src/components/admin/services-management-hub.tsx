@@ -109,22 +109,39 @@ export function ServicesManagementHub() {
   const fetchData = React.useCallback(async () => {
     try {
       setLoading(true);
-      const [srvRes, catRes] = await Promise.all([
-        fetch("/api/bridal/services"),
-        fetch("/api/categories"),
-      ]);
+      let loadedServices: ServiceItem[] = [];
+      let loadedCategories: CategoryItem[] = [];
 
-      const srvJson = await srvRes.json();
-      const catJson = await catRes.json();
-
-      if (srvJson.success && Array.isArray(srvJson.data)) {
-        setServices(srvJson.data);
-      }
-      if (catJson.success && Array.isArray(catJson.data)) {
-        setCategories(catJson.data);
-        if (catJson.data.length > 0 && !formData.categoryId) {
-          setFormData((prev) => ({ ...prev, categoryId: catJson.data[0].id }));
+      try {
+        const adminRes = await fetch("/api/admin/services");
+        const adminJson = await adminRes.json();
+        if (adminJson.success && adminJson.data) {
+          loadedServices = adminJson.data.services || [];
+          loadedCategories = adminJson.data.categories || [];
         }
+      } catch (err) {
+        console.warn("Could not load from /api/admin/services, trying fallback:", err);
+      }
+
+      if (loadedServices.length === 0 || loadedCategories.length === 0) {
+        const [srvRes, catRes] = await Promise.all([
+          fetch("/api/bridal/services?all=true"),
+          fetch("/api/categories"),
+        ]);
+        const srvJson = await srvRes.json();
+        const catJson = await catRes.json();
+        if (loadedServices.length === 0 && srvJson.success && Array.isArray(srvJson.data)) {
+          loadedServices = srvJson.data;
+        }
+        if (loadedCategories.length === 0 && catJson.success && Array.isArray(catJson.data)) {
+          loadedCategories = catJson.data;
+        }
+      }
+
+      setServices(loadedServices);
+      setCategories(loadedCategories);
+      if (loadedCategories.length > 0 && !formData.categoryId) {
+        setFormData((prev) => ({ ...prev, categoryId: loadedCategories[0].id }));
       }
     } catch (e) {
       console.error("Failed to load catalog data:", e);
@@ -137,19 +154,20 @@ export function ServicesManagementHub() {
     fetchData();
   }, [fetchData]);
 
-  // Packages are services marked as isBridal or categorized under bridal suites
+  // Packages are bridal suites or package offerings
   const packagesList = React.useMemo(() => {
     return services.filter(
       (s) =>
-        (s.isBridal || s.price >= 3000 || s.durationMinutes >= 90) &&
+        (s.isBridal || s.category?.name?.toLowerCase().includes("bridal")) &&
         (search ? s.name.toLowerCase().includes(search.toLowerCase()) : true)
     );
   }, [services, search]);
 
+  // Individual services are everyday salon services (hair, skin, spa, facials, beard)
   const individualServicesList = React.useMemo(() => {
     return services.filter(
       (s) =>
-        (!s.isBridal && s.price < 3000 && s.durationMinutes < 90) &&
+        (!s.isBridal && !s.category?.name?.toLowerCase().includes("bridal")) &&
         (search ? s.name.toLowerCase().includes(search.toLowerCase()) : true)
     );
   }, [services, search]);
@@ -157,7 +175,7 @@ export function ServicesManagementHub() {
   // Toggle Service Active Status
   const handleToggleActive = async (service: ServiceItem) => {
     try {
-      const res = await fetch(`/api/bridal/services/${service.id}`, {
+      const res = await fetch(`/api/admin/services/${service.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isActive: !service.isActive }),
@@ -180,7 +198,7 @@ export function ServicesManagementHub() {
   const handleDeleteService = async (id: string, name: string) => {
     if (!confirm(`Are you sure you want to archive or remove "${name}"?`)) return;
     try {
-      const res = await fetch(`/api/bridal/services/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/admin/services/${id}`, { method: "DELETE" });
       const json = await res.json();
       if (!res.ok || !json.success) {
         throw new Error(json.error || "Failed to remove item");
@@ -206,7 +224,7 @@ export function ServicesManagementHub() {
       imageUrl: item.imageUrl || "/images/services/service-bridal-makeup.jpg",
       minAdvanceAmount: item.minAdvanceAmount || 1000,
       maxAdvanceAmount: item.maxAdvanceAmount || 2500,
-      isBridal: item.isBridal ?? true,
+      isBridal: item.isBridal ?? false,
       isFeatured: item.isFeatured ?? false,
       isPopular: item.isPopular ?? false,
       isActive: item.isActive ?? true,
@@ -220,20 +238,27 @@ export function ServicesManagementHub() {
     e.preventDefault();
     try {
       setSubmitting(true);
+      const generatedSlug = (formData.slug?.trim() || formData.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")) || `service-${Date.now()}`;
+      const payload = {
+        ...formData,
+        slug: generatedSlug,
+        categoryId: formData.categoryId || (categories[0]?.id || "cat_6"),
+      };
+
       const url = editingItem
-        ? `/api/bridal/services/${editingItem.id}`
-        : "/api/bridal/services";
+        ? `/api/admin/services/${editingItem.id}`
+        : "/api/admin/services";
       const method = editingItem ? "PATCH" : "POST";
 
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
 
       const json = await res.json();
       if (!res.ok || !json.success) {
-        throw new Error(json.error || "Failed to save service");
+        throw new Error(json.error || (json.errors ? Object.values(json.errors).flat().join(", ") : "Failed to save service"));
       }
 
       setFeedback({
@@ -316,11 +341,10 @@ export function ServicesManagementHub() {
       {/* Toast Feedback */}
       {feedback && (
         <div
-          className={`flex items-center justify-between p-3.5 rounded-lg text-xs font-medium border ${
-            feedback.type === "success"
+          className={`flex items-center justify-between p-3.5 rounded-lg text-xs font-medium border ${feedback.type === "success"
               ? "bg-emerald-950/40 border-emerald-500/40 text-emerald-300"
               : "bg-red-950/40 border-red-500/40 text-red-300"
-          }`}
+            }`}
         >
           <span>{feedback.text}</span>
           <button onClick={() => setFeedback(null)} className="text-zinc-400 hover:text-white">
@@ -335,33 +359,30 @@ export function ServicesManagementHub() {
         <div className="flex items-center gap-1.5 text-xs">
           <button
             onClick={() => setActiveTab("packages")}
-            className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
-              activeTab === "packages"
+            className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${activeTab === "packages"
                 ? "bg-salon-gold text-black font-bold shadow-md"
                 : "text-zinc-400 hover:text-white hover:bg-zinc-800"
-            }`}
+              }`}
           >
             <Crown className="h-3.5 w-3.5" />
             <span>Bridal Packages ({packagesList.length})</span>
           </button>
           <button
             onClick={() => setActiveTab("services")}
-            className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
-              activeTab === "services"
+            className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${activeTab === "services"
                 ? "bg-salon-gold text-black font-bold shadow-md"
                 : "text-zinc-400 hover:text-white hover:bg-zinc-800"
-            }`}
+              }`}
           >
             <Scissors className="h-3.5 w-3.5" />
             <span>Individual Services ({individualServicesList.length})</span>
           </button>
           <button
             onClick={() => setActiveTab("categories")}
-            className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
-              activeTab === "categories"
+            className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${activeTab === "categories"
                 ? "bg-salon-gold text-black font-bold shadow-md"
                 : "text-zinc-400 hover:text-white hover:bg-zinc-800"
-            }`}
+              }`}
           >
             <Layers className="h-3.5 w-3.5" />
             <span>Categories ({categories.length})</span>
@@ -420,11 +441,10 @@ export function ServicesManagementHub() {
           {(activeTab === "packages" ? packagesList : individualServicesList).map((s) => (
             <div
               key={s.id}
-              className={`rounded-xl border transition-all flex flex-col justify-between overflow-hidden shadow-md group ${
-                s.isActive
+              className={`rounded-xl border transition-all flex flex-col justify-between overflow-hidden shadow-md group ${s.isActive
                   ? "border-salon-borderBlack bg-salon-richBlack/60 hover:border-salon-gold/50"
                   : "border-red-950/40 bg-zinc-950/40 opacity-70"
-              }`}
+                }`}
             >
               <div>
                 {/* Header image preview */}
@@ -455,9 +475,8 @@ export function ServicesManagementHub() {
                   <div className="absolute top-2.5 right-2.5">
                     <button
                       onClick={() => handleToggleActive(s)}
-                      className={`p-1.5 rounded-full shadow-lg backdrop-blur-md transition-colors ${
-                        s.isActive ? "bg-emerald-950/80 text-emerald-400" : "bg-red-950/80 text-red-400"
-                      }`}
+                      className={`p-1.5 rounded-full shadow-lg backdrop-blur-md transition-colors ${s.isActive ? "bg-emerald-950/80 text-emerald-400" : "bg-red-950/80 text-red-400"
+                        }`}
                       title={s.isActive ? "Unpublish from public catalog" : "Publish to public catalog"}
                     >
                       {s.isActive ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
@@ -567,6 +586,32 @@ export function ServicesManagementHub() {
                   placeholder="e.g. Royal Rajputana Grand Bridal Suite"
                   className="bg-salon-black border-zinc-800 text-white"
                 />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-zinc-300 font-medium mb-1">Category:</label>
+                  <select
+                    value={formData.categoryId}
+                    onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
+                    className="w-full h-9 rounded-md bg-salon-black border border-zinc-800 text-white px-2.5 text-xs focus:ring-1 focus:ring-salon-gold"
+                  >
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-zinc-300 font-medium mb-1">URL Slug (Optional):</label>
+                  <Input
+                    value={formData.slug}
+                    onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
+                    placeholder="Auto-generated if blank"
+                    className="bg-salon-black border-zinc-800 text-white font-mono text-xs"
+                  />
+                </div>
               </div>
 
               <div>

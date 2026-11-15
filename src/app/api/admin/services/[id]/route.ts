@@ -44,3 +44,5 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
     return NextResponse.json({ success: false, error: error.message || "Failed to delete service" }, { status: 500 });
   }
 }
+
+export const PUT = PATCH;

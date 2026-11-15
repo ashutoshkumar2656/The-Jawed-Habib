@@ -44,10 +44,31 @@ export function Header() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // Close mobile drawer on route change
+  // Close mobile drawer on route change, lock body scroll, and listen for Escape key
   React.useEffect(() => {
     setMobileMenuOpen(false);
   }, [pathname]);
+
+  React.useEffect(() => {
+    if (mobileMenuOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [mobileMenuOpen]);
+
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && mobileMenuOpen) {
+        setMobileMenuOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [mobileMenuOpen]);
 
   const handleNavClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
     if (href.startsWith("/#") && pathname === "/") {
@@ -208,12 +229,18 @@ export function Header() {
         </div>
       </div>
 
-      {/* Mobile Drawer */}
+      {/* Mobile Backdrop & Drawer */}
       {mobileMenuOpen && (
-        <div
-          id="mobile-navigation-drawer"
-          className="border-b border-salon-borderBlack bg-salon-black/98 px-6 py-6 backdrop-blur-2xl lg:hidden max-h-[85vh] overflow-y-auto animate-in slide-in-from-top-4 duration-200"
-        >
+        <>
+          <div
+            className="fixed inset-0 top-20 z-40 bg-black/80 backdrop-blur-sm lg:hidden transition-opacity"
+            onClick={() => setMobileMenuOpen(false)}
+            aria-hidden="true"
+          />
+          <div
+            id="mobile-navigation-drawer"
+            className="fixed inset-x-0 top-20 z-50 border-b border-salon-borderBlack bg-salon-black/98 px-5 py-6 backdrop-blur-2xl lg:hidden max-h-[calc(100vh-5rem)] overflow-y-auto animate-in slide-in-from-top-4 duration-200 shadow-2xl pb-[calc(2rem+env(safe-area-inset-bottom,0px))]"
+          >
           {/* Mobile Drawer Brand Header */}
           <div className="pb-4 mb-4 border-b border-zinc-800/80 flex items-center justify-between">
             <div onClick={() => setMobileMenuOpen(false)}>
@@ -311,6 +338,7 @@ export function Header() {
             </div>
           </nav>
         </div>
+        </>
       )}
     </header>
   );

@@ -283,7 +283,84 @@ export default function AboutPage() {
           </div>
         </section>
 
-        {/* 6. GALLERY PREVIEW */}
+        {/* 6. BUSINESS IDENTITY & CONTACT COORDINATES (Razorpay & Customer Verification) */}
+        <section className="space-y-8">
+          <SectionHeader
+            badge="Official Information"
+            title="Business Coordinates & Operational Hours"
+            subtitle="Verified location and customer service contact details for The Jawed Habib Salon in Lalganj."
+          />
+
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-6 sm:p-8 space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 text-sm">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-salon-gold font-serif font-bold text-base">
+                  <MapPin className="h-4 w-4" />
+                  <span>Physical Address</span>
+                </div>
+                <p className="text-zinc-300 leading-relaxed font-light text-xs sm:text-sm">
+                  {BRAND_CONFIG.location.fullAddress}
+                </p>
+                <p className="text-[11px] text-salon-gold">
+                  Landmark: {BRAND_CONFIG.location.landmark}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-salon-gold font-serif font-bold text-base">
+                  <Clock className="h-4 w-4" />
+                  <span>Salon Timings</span>
+                </div>
+                <p className="text-zinc-300 font-light text-xs sm:text-sm">
+                  {BRAND_CONFIG.hours.display}
+                </p>
+                <span className="inline-block text-[11px] font-semibold text-emerald-400 bg-emerald-950/60 border border-emerald-800/40 px-2 py-0.5 rounded">
+                  Open All 7 Days of the Week
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-salon-gold font-serif font-bold text-base">
+                  <Scissors className="h-4 w-4" />
+                  <span>Direct Desk Lines</span>
+                </div>
+                <div className="flex flex-col space-y-1 font-mono text-xs sm:text-sm">
+                  {BRAND_CONFIG.contact.phones.map((phone) => (
+                    <a
+                      key={phone}
+                      href={`tel:+91${phone}`}
+                      className="text-zinc-300 hover:text-salon-gold transition-colors"
+                    >
+                      +91 {phone}
+                    </a>
+                  ))}
+                </div>
+                {BRAND_CONFIG.contact.email && (
+                  <p className="text-[11px] text-zinc-400 font-mono pt-1">
+                    Email: {BRAND_CONFIG.contact.email}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-zinc-800/80 flex flex-wrap items-center justify-between gap-4 text-xs">
+              <span className="text-zinc-400">
+                Official Website: <strong className="text-white">https://www.thejawedhabibsalons.in</strong>
+              </span>
+              <a
+                href={BRAND_CONFIG.location.googleMapsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-salon-gold hover:underline inline-flex items-center gap-1 font-semibold"
+              >
+                <span>View Salon on Google Maps</span>
+                <ArrowRight className="h-3 w-3" />
+              </a>
+            </div>
+          </div>
+        </section>
+
+        {/* 7. GALLERY PREVIEW */}
         <section className="space-y-8 text-center">
           <SectionHeader
             badge="Salon Tour"
@@ -316,7 +393,7 @@ export default function AboutPage() {
           </div>
         </section>
 
-        {/* 7. APPOINTMENT CTA */}
+        {/* 8. APPOINTMENT CTA */}
         <section className="rounded-2xl border border-salon-gold/30 bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 p-8 sm:p-12 text-center space-y-4 shadow-[0_0_40px_rgba(198,165,107,0.1)]">
           <h2 className="font-serif text-2xl sm:text-3xl font-bold text-white">
             Experience Our Salon in Lalganj Today

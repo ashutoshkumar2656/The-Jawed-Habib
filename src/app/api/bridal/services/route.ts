@@ -50,6 +50,15 @@ export async function POST(req: NextRequest) {
     }
     body.isBridal = true;
 
+    // Normalize slug from name if omitted or empty
+    if (!body.slug || typeof body.slug !== "string" || !body.slug.trim()) {
+      body.slug = (body.name || "")
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/(^-|-$)/g, "");
+    }
+
     // Validate using adminServiceSchema
     const validated = adminServiceSchema.safeParse(body);
     if (!validated.success) {

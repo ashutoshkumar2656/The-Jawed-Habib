@@ -327,11 +327,30 @@ export default function PricingPage() {
           </div>
         </div>
 
-        {/* 6. PRICE DISCLAIMER */}
-        <div className="p-5 rounded-xl border border-zinc-800 bg-zinc-950/60 text-xs text-zinc-400 space-y-2 max-w-4xl mx-auto">
-          <p className="font-semibold text-zinc-300">Price Confirmation Policy:</p>
-          <p className="leading-relaxed">
-            All prices are subject to physical hair inspection by our master stylists. Taxes and product add-ons are specified clearly before service begins. Payment is settled at the reception desk via Cash, Card, or UPI upon completion.
+        {/* 6. PRICE & PAYMENT POLICY EXPLANATIONS */}
+        <div className="p-6 rounded-2xl border border-zinc-800 bg-zinc-950/80 text-xs text-zinc-300 space-y-4 max-w-4xl mx-auto">
+          <div className="flex items-center gap-2 border-b border-zinc-800 pb-3">
+            <ShieldCheck className="h-4 w-4 text-salon-gold" />
+            <h4 className="font-serif text-sm font-bold text-white uppercase tracking-wider">
+              Transparent Pricing &amp; Payment Methods
+            </h4>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 leading-relaxed font-light">
+            <div className="space-y-1.5">
+              <span className="font-semibold text-salon-gold block">Standard &amp; Regular Appointments</span>
+              <p className="text-zinc-400">
+                Regular salon services (precision haircuts, beard grooming, face cleanup, styling) can be booked online. Payment is settled at our Lalganj salon counter following service completion via UPI, Debit/Credit Cards, or Cash.
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <span className="font-semibold text-salon-gold block">Bridal &amp; Premium Suite Bookings</span>
+              <p className="text-zinc-400">
+                To guarantee exclusivity for our VIP Bridal Dressing Suite and master makeup artist allocation on high-demand wedding dates, a secure advance deposit (₹1,000 to ₹2,500) can be paid online via Razorpay. The remaining balance is payable at the salon desk.
+              </p>
+            </div>
+          </div>
+          <p className="text-[11px] text-zinc-500 border-t border-zinc-800/80 pt-2">
+            Currency: All prices and advance amounts are displayed in Indian Rupees (INR). No hidden service surcharges or unexpected fees are added.
           </p>
         </div>
 
@@ -342,7 +361,7 @@ export default function PricingPage() {
             Ready to Book Your Salon Service?
           </h2>
           <p className="text-xs sm:text-sm text-zinc-300 max-w-xl mx-auto leading-relaxed font-light">
-            Reserve your chair online without any upfront card deposit. Pay directly at our Lalganj salon desk.
+            Reserve your chair online with complete schedule flexibility. Convenient online advance deposits or in-person salon counter payments.
           </p>
           <div className="pt-2 flex flex-wrap justify-center gap-4">
             <Link

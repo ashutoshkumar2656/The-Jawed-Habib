@@ -178,7 +178,14 @@ export function BeforeAfterSlider({
       {/* Main Interactive Comparison Viewport */}
       <div
         ref={containerRef}
-        className="relative w-full aspect-[4/3] sm:aspect-[16/10] overflow-hidden select-none cursor-ew-resize bg-black"
+        role="slider"
+        tabIndex={0}
+        aria-label="Before and After transformation comparison slider"
+        aria-valuenow={Math.round(sliderPosition)}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        style={{ touchAction: "none" }}
+        className="relative w-full aspect-[4/3] sm:aspect-[16/10] overflow-hidden select-none cursor-ew-resize bg-black touch-none focus:outline-none focus:ring-2 focus:ring-salon-gold/50"
         onMouseDown={(e) => {
           setIsDragging(true);
           handleMove(e.clientX);
@@ -186,6 +193,21 @@ export function BeforeAfterSlider({
         onTouchStart={(e) => {
           setIsDragging(true);
           if (e.touches[0]) handleMove(e.touches[0].clientX);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowLeft") {
+            e.preventDefault();
+            setSliderPosition((prev) => Math.max(0, prev - 5));
+          } else if (e.key === "ArrowRight") {
+            e.preventDefault();
+            setSliderPosition((prev) => Math.min(100, prev + 5));
+          } else if (e.key === "Home") {
+            e.preventDefault();
+            setSliderPosition(0);
+          } else if (e.key === "End") {
+            e.preventDefault();
+            setSliderPosition(100);
+          }
         }}
       >
         {/* Under layer: After Image (revealed from right) */}

@@ -73,4 +73,23 @@ if (fs.promises) {
   };
 }
 
-console.log('[PATCH] fs.mkdir, fs.mkdirSync, and fs.promises.mkdir patched for Windows EPERM resilience');
+const originalReadFileSync = fs.readFileSync;
+fs.readFileSync = function (p, options) {
+  let retries = 5;
+  while (true) {
+    try {
+      return originalReadFileSync.apply(this, arguments);
+    } catch (err) {
+      if (err.code === 'EPERM' || err.code === 'EBUSY') {
+        if (retries-- > 0) {
+          const waitTill = new Date(new Date().getTime() + 50);
+          while (waitTill > new Date()) {}
+          continue;
+        }
+      }
+      throw err;
+    }
+  }
+};
+
+console.log('[PATCH] fs.mkdir, fs.mkdirSync, fs.readFileSync patched for Windows EPERM resilience');

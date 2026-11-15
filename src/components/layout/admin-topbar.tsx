@@ -43,6 +43,16 @@ export function AdminTopbar() {
   const [showNotifications, setShowNotifications] = React.useState(false);
   const [unreadCount, setUnreadCount] = React.useState(2);
 
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {
+      // Ignore network failure on logout
+    } finally {
+      window.location.href = "/admin/login";
+    }
+  };
+
   // Compute breadcrumb segments
   const pathSegments = React.useMemo(() => {
     if (!pathname) return [];
@@ -196,6 +206,17 @@ export function AdminTopbar() {
         >
           <ExternalLink className="h-4 w-4" />
         </Link>
+
+        {/* Logout Button */}
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:text-red-400 hover:border-red-900/50 transition-colors"
+          title="Sign Out of Salon Admin"
+          aria-label="Logout"
+        >
+          <LogOut className="h-4 w-4" />
+        </button>
       </div>
     </header>
   );

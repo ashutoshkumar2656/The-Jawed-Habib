@@ -27,9 +27,16 @@ export const serverEnvSchema = z.object({
   ADMIN_DEFAULT_EMAIL: z.string().email().optional(),
   ADMIN_DEFAULT_PASSWORD: z.string().min(8).optional(),
   PAYMENT_ENCRYPTION_KEY: z.string().min(16).optional(),
+  RAZORPAY_ENVIRONMENT: z.enum(["TEST", "LIVE"]).optional(),
   RAZORPAY_KEY_ID: z.string().optional(),
   RAZORPAY_KEY_SECRET: z.string().optional(),
   RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
+  RAZORPAY_LIVE_KEY_ID: z.string().optional(),
+  RAZORPAY_LIVE_KEY_SECRET: z.string().optional(),
+  RAZORPAY_LIVE_WEBHOOK_SECRET: z.string().optional(),
+  RAZORPAY_TEST_KEY_ID: z.string().optional(),
+  RAZORPAY_TEST_KEY_SECRET: z.string().optional(),
+  RAZORPAY_TEST_WEBHOOK_SECRET: z.string().optional(),
   CLOUDINARY_API_KEY: z.string().optional(),
   CLOUDINARY_API_SECRET: z.string().optional(),
   CLOUDINARY_UPLOAD_PRESET: z.string().optional(),
@@ -58,6 +65,7 @@ export const clientEnvSchema = z.object({
     .string()
     .url()
     .default("https://maps.app.goo.gl/TVx48xoWEu8dMvXT9"),
+  NEXT_PUBLIC_PAYMENT_MODE: z.enum(["TEST", "LIVE"]).optional(),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

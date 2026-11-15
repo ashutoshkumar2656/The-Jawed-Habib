@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import dbRepo from "@/lib/db/repo";
 import emailService from "@/lib/email/service";
-import { verifyRazorpayWebhookSignature } from "@/lib/payments/razorpay";
+import { verifyRazorpayWebhookSignature, captureRazorpayPayment } from "@/lib/payments/razorpay";
 
 export const runtime = "nodejs";
 
@@ -51,7 +51,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const eventId = event.id || `evt_${Date.now()}`;
+    // Retrieve event ID from Razorpay header or payload
+    const eventId = req.headers.get("x-razorpay-event-id") || event.id || `evt_${Date.now()}`;
     const eventType = event.event;
 
     // Deduplication check
@@ -95,6 +96,43 @@ export async function POST(req: NextRequest) {
                 transactionId: verified?.payment?.id,
               })
               .catch(() => {});
+          }
+        }
+        break;
+      }
+
+      case "payment.authorized": {
+        // Payment authorized - attempt immediate auto-capture if not already captured
+        const payment = event.payload?.payment?.entity;
+        if (payment && payment.id) {
+          const notes = payment.notes || {};
+          const appointmentId = notes.appointmentId;
+          if (appointmentId) {
+            const captureRes = await captureRazorpayPayment({
+              paymentId: payment.id,
+              amountInPaise: payment.amount,
+              currency: payment.currency || "INR",
+              keyId: creds.keyId,
+              keySecret: creds.keySecret,
+            });
+
+            if (captureRes.success) {
+              const verified = await dbRepo.verifyRazorpayPayment({
+                appointmentId,
+                razorpayOrderId: payment.order_id,
+                razorpayPaymentId: payment.id,
+                razorpaySignature: signature,
+                signatureValid: true,
+                amountInPaise: payment.amount,
+                method: payment.method,
+              });
+              emailService
+                .sendPaymentReceipt({
+                  appointmentId,
+                  transactionId: verified?.payment?.id,
+                })
+                .catch(() => {});
+            }
           }
         }
         break;

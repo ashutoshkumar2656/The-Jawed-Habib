@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Image from "next/image";
+import Link from "next/link";
 import {
   Calendar as CalendarIcon,
   Clock,
@@ -768,10 +769,10 @@ export function BridalBookingExperience() {
         </div>
 
         {/* Spacious Calendar Container */}
-        <div className="mx-auto max-w-4xl overflow-hidden rounded-3xl border border-white/10 bg-salon-cardBlack/70 p-6 md:p-10 shadow-2xl backdrop-blur-md">
-          <div className="flex flex-col gap-8 md:flex-row">
+        <div className="mx-auto max-w-4xl overflow-hidden rounded-2xl sm:rounded-3xl border border-white/10 bg-salon-cardBlack/70 p-3 sm:p-6 md:p-10 shadow-2xl backdrop-blur-md">
+          <div className="flex flex-col gap-6 md:gap-8 md:flex-row">
             {/* Calendar Grid (Left Column) */}
-            <div className="flex-1 rounded-2xl border border-white/10 bg-black/40 p-6">
+            <div className="flex-1 rounded-xl sm:rounded-2xl border border-white/10 bg-black/40 p-3 sm:p-6">
               {/* Month Navigation */}
               <div className="mb-6 flex items-center justify-between">
                 <button
@@ -837,7 +838,7 @@ export function BridalBookingExperience() {
                       title={title}
                       onClick={() => handleSelectDate(day)}
                       className={cn(
-                        "relative flex h-9 w-full items-center justify-center rounded-full text-sm font-medium transition-all select-none",
+                        "relative flex h-9 sm:h-10 w-full items-center justify-center rounded-full text-xs sm:text-sm font-medium transition-all select-none min-h-[38px]",
                         isPast
                           ? "cursor-not-allowed text-zinc-700"
                           : isBlocked
@@ -922,7 +923,7 @@ export function BridalBookingExperience() {
                             type="button"
                             onClick={() => setSelectedTime(slot)}
                             className={cn(
-                              "rounded-xl border py-2.5 text-xs font-semibold transition-all select-none text-center",
+                              "rounded-xl border py-3 px-2 text-xs font-semibold transition-all select-none text-center min-h-[44px] flex items-center justify-center",
                               isTimeSelected
                                 ? "border-salon-gold bg-salon-gold text-black shadow-md font-bold"
                                 : "border-white/10 bg-black/30 text-zinc-300 hover:border-salon-gold/50 hover:bg-white/5"
@@ -1003,10 +1004,11 @@ export function BridalBookingExperience() {
                   <input
                     type="text"
                     required
+                    autoComplete="name"
                     value={customerName}
                     onChange={(e) => setCustomerName(e.target.value)}
                     placeholder="e.g. Priya Sharma"
-                    className="w-full rounded-xl border border-white/10 bg-black/40 pl-10 pr-4 py-3 text-sm text-white placeholder-zinc-600 focus:border-salon-gold focus:outline-none focus:ring-1 focus:ring-salon-gold transition-colors"
+                    className="w-full rounded-xl border border-white/10 bg-black/40 pl-10 pr-4 py-3 text-base sm:text-sm text-white placeholder-zinc-600 focus:border-salon-gold focus:outline-none focus:ring-1 focus:ring-salon-gold transition-colors"
                   />
                 </div>
               </div>
@@ -1020,12 +1022,14 @@ export function BridalBookingExperience() {
                   <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
                   <input
                     type="tel"
+                    inputMode="numeric"
+                    autoComplete="tel"
                     required
                     maxLength={10}
                     value={customerPhone}
                     onChange={(e) => setCustomerPhone(e.target.value)}
                     placeholder="10-digit mobile number"
-                    className="w-full rounded-xl border border-white/10 bg-black/40 pl-10 pr-4 py-3 text-sm text-white placeholder-zinc-600 focus:border-salon-gold focus:outline-none focus:ring-1 focus:ring-salon-gold transition-colors"
+                    className="w-full rounded-xl border border-white/10 bg-black/40 pl-10 pr-4 py-3 text-base sm:text-sm text-white placeholder-zinc-600 focus:border-salon-gold focus:outline-none focus:ring-1 focus:ring-salon-gold transition-colors"
                   />
                 </div>
               </div>
@@ -1041,11 +1045,13 @@ export function BridalBookingExperience() {
                   <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
                   <input
                     type="email"
+                    inputMode="email"
+                    autoComplete="email"
                     required
                     value={customerEmail}
                     onChange={(e) => setCustomerEmail(e.target.value)}
                     placeholder="e.g. priya@gmail.com"
-                    className="w-full rounded-xl border border-white/10 bg-black/40 pl-10 pr-4 py-3 text-sm text-white placeholder-zinc-600 focus:border-salon-gold focus:outline-none focus:ring-1 focus:ring-salon-gold transition-colors"
+                    className="w-full rounded-xl border border-white/10 bg-black/40 pl-10 pr-4 py-3 text-base sm:text-sm text-white placeholder-zinc-600 focus:border-salon-gold focus:outline-none focus:ring-1 focus:ring-salon-gold transition-colors"
                   />
                 </div>
               </div>
@@ -1060,10 +1066,11 @@ export function BridalBookingExperience() {
                   <input
                     type="text"
                     required
+                    autoComplete="address-level2"
                     value={customerLocality}
                     onChange={(e) => setCustomerLocality(e.target.value)}
                     placeholder="e.g. Lalganj, Vaishali, Hajipur"
-                    className="w-full rounded-xl border border-white/10 bg-black/40 pl-10 pr-4 py-3 text-sm text-white placeholder-zinc-600 focus:border-salon-gold focus:outline-none focus:ring-1 focus:ring-salon-gold transition-colors"
+                    className="w-full rounded-xl border border-white/10 bg-black/40 pl-10 pr-4 py-3 text-base sm:text-sm text-white placeholder-zinc-600 focus:border-salon-gold focus:outline-none focus:ring-1 focus:ring-salon-gold transition-colors"
                   />
                 </div>
               </div>
@@ -1553,16 +1560,33 @@ export function BridalBookingExperience() {
               </button>
             </div>
 
-            <p className="text-[11px] text-zinc-500 leading-relaxed pt-2">
-              By clicking below, you will open Razorpay Standard Checkout to securely pay the advance of ₹{currentAdvance.toLocaleString("en-IN")}. Your date is guaranteed upon payment capture.
-            </p>
+            <div className="pt-3 border-t border-white/10 space-y-2 text-[11px] text-zinc-400 leading-relaxed">
+              <p>
+                By clicking below, you will open Razorpay Standard Checkout to securely pay the advance of ₹{currentAdvance.toLocaleString("en-IN")}. By proceeding, you agree to our{" "}
+                <Link href="/terms-and-conditions" target="_blank" className="text-salon-gold hover:underline font-medium">
+                  Terms &amp; Conditions
+                </Link>
+                {", "}
+                <Link href="/privacy-policy" target="_blank" className="text-salon-gold hover:underline font-medium">
+                  Privacy Policy
+                </Link>
+                {", and "}
+                <Link href="/cancellation-refund-policy" target="_blank" className="text-salon-gold hover:underline font-medium">
+                  Cancellation &amp; Refund Policy
+                </Link>
+                .
+              </p>
+              <p className="text-[10px] text-zinc-500">
+                Secure transaction processed by Razorpay. Card numbers, CVV, and banking credentials are never stored on salon servers.
+              </p>
+            </div>
 
             <Button
               variant="gold"
               size="lg"
               disabled={isProcessingPayment}
               onClick={handleProceedPayment}
-              className="mt-6 w-full gap-2 py-4 text-base font-bold shadow-xl tracking-wide"
+              className="mt-4 w-full gap-2 py-4 text-base font-bold shadow-xl tracking-wide"
             >
               {isProcessingPayment ? (
                 <>

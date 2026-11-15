@@ -54,7 +54,7 @@ export async function GET(
         address: BRAND_CONFIG.location.fullAddress,
         phone: BRAND_CONFIG.contact.primaryPhone,
         secondaryPhone: BRAND_CONFIG.contact.secondaryPhone,
-        gstin: "10AAACT0000A1Z5", // Bihar GST format
+        gstin: BRAND_CONFIG.legal.gstin || "Pending Owner Registration",
       },
       customer: {
         name: customerUser?.name || "Valued Client",

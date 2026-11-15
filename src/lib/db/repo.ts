@@ -2514,8 +2514,8 @@ export const dbRepo = {
         return updated;
       } catch (err: any) {
         if (shouldEnforceDurablePersistence()) {
-          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during cancelAppointment:", err);
-          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to cancel appointment in database: ${err.message || "Unknown error"}`);
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during updateCustomerProfile:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to update customer profile in database: ${err.message || "Unknown error"}`);
         }
         isPostgresAvailable = false;
       }
@@ -2672,9 +2672,15 @@ export const dbRepo = {
           },
         });
         return created;
-      } catch {
+      } catch (err: any) {
+        if (shouldEnforceDurablePersistence()) {
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during createCategory:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to create category in database: ${err.message || "Unknown error"}`);
+        }
         isPostgresAvailable = false;
       }
+    } else if (shouldEnforceDurablePersistence()) {
+      throw new Error("DATABASE_PERSISTENCE_FAILED: Database connection to Neon PostgreSQL is unavailable.");
     }
 
     const newCat: MemoryCategory = {
@@ -2714,8 +2720,8 @@ export const dbRepo = {
         return updated;
       } catch (err: any) {
         if (shouldEnforceDurablePersistence()) {
-          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during cancelAppointment:", err);
-          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to cancel appointment in database: ${err.message || "Unknown error"}`);
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during updateCategory:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to update category in database: ${err.message || "Unknown error"}`);
         }
         isPostgresAvailable = false;
       }
@@ -2733,13 +2739,27 @@ export const dbRepo = {
   async deleteCategory(id: string) {
     if (await canUsePrisma()) {
       try {
+        const attachedServicesCount = await prisma.service.count({ where: { categoryId: id } });
+        if (attachedServicesCount > 0) {
+          throw new Error(`Cannot delete category: ${attachedServicesCount} active service(s) are associated with this category. Please reassign or delete them first.`);
+        }
         await prisma.serviceCategory.delete({ where: { id } });
         return { success: true };
-      } catch {
+      } catch (err: any) {
+        if (shouldEnforceDurablePersistence() || err.message?.includes("Cannot delete category")) {
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during deleteCategory:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to delete category in database: ${err.message || "Unknown error"}`);
+        }
         isPostgresAvailable = false;
       }
+    } else if (shouldEnforceDurablePersistence()) {
+      throw new Error("DATABASE_PERSISTENCE_FAILED: Database connection to Neon PostgreSQL is unavailable.");
     }
 
+    const attachedCount = memoryDb.services.filter((s) => s.categoryId === id).length;
+    if (attachedCount > 0) {
+      throw new Error(`Cannot delete category: ${attachedCount} active service(s) are associated with this category. Please reassign or delete them first.`);
+    }
     const idx = memoryDb.categories.findIndex((x) => x.id === id);
     if (idx !== -1) memoryDb.categories.splice(idx, 1);
     return { success: true };
@@ -5878,11 +5898,23 @@ export const dbRepo = {
           "Cannot switch to Live Mode until Live Key ID and Live Key Secret have been configured and verified."
         );
       }
+      const liveKey = input.liveKeyId || current.liveKeyId;
+      if (liveKey && !liveKey.startsWith("rzp_live_")) {
+        throw new Error(
+          "Cannot switch to Live Mode: Live Key ID must begin with 'rzp_live_'."
+        );
+      }
       if (current.environment !== "LIVE" && !input.confirmedLiveActivation) {
         throw new Error(
           "Explicit admin confirmation is required before activating Live Mode."
         );
       }
+    }
+
+    if (input.testKeyId && !input.testKeyId.startsWith("rzp_test_")) {
+      throw new Error(
+        "Test Key ID must begin with 'rzp_test_'."
+      );
     }
 
     const now = new Date();
@@ -5942,23 +5974,100 @@ export const dbRepo = {
 
   async getRazorpayCredentials(env?: "TEST" | "LIVE") {
     const settings = await this.getRazorpaySettings(false);
-    const targetEnv = env || settings.environment || "TEST";
+
+    // Explicit environment variable can configure mode, otherwise follow database settings
+    const configuredEnv = process.env.RAZORPAY_ENVIRONMENT === "LIVE" ? "LIVE" : (settings.environment || "TEST");
+    const targetEnv = env || configuredEnv;
     const isTest = targetEnv === "TEST";
 
-    // Strictly read credentials from server environment variables
-    const envKeyId = process.env.RAZORPAY_KEY_ID || "";
-    const envKeySecret = process.env.RAZORPAY_KEY_SECRET || "";
-    const envWebhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || "";
-
-    // In unit testing environment (Vitest), allow mock fallbacks so standalone tests pass without external env
     const isVitest = process.env.NODE_ENV === "test";
-    const testFallbackKey = isVitest ? "rzp_test_lalganj_mock" : "";
-    const testFallbackSecret = isVitest ? "mock_secret_lalganj_2026" : "";
-    const testFallbackWebhook = isVitest ? "mock_webhook_secret_lalganj_2026" : "";
+    const isPreview = process.env.VERCEL_ENV === "preview";
+    const isDev = process.env.NODE_ENV === "development";
 
-    const keyId = envKeyId || (isTest ? (settings.testKeyId || testFallbackKey) : (settings.liveKeyId || ""));
-    const keySecret = envKeySecret || (isTest ? (decryptSecret(settings.testKeySecretEncrypted) || testFallbackSecret) : (decryptSecret(settings.liveKeySecretEncrypted) || ""));
-    const webhookSecret = envWebhookSecret || (isTest ? (decryptSecret(settings.testWebhookSecretEncrypted) || testFallbackWebhook) : (decryptSecret(settings.liveWebhookSecretEncrypted) || ""));
+    // Enforce environment isolation: Live Mode is strictly barred in Preview and Local Development
+    if ((isPreview || isDev) && !isVitest && targetEnv === "LIVE") {
+      throw new Error(
+        "Razorpay Live Mode is strictly prohibited in Preview and Development environments. Please use Test Mode."
+      );
+    }
+
+    let keyId = "";
+    let keySecret = "";
+    let webhookSecret = "";
+
+    if (targetEnv === "LIVE") {
+      // 1. Resolve Live Credentials with Atomic Pair Validation
+      const liveEnvKeyId = process.env.RAZORPAY_LIVE_KEY_ID || (process.env.RAZORPAY_KEY_ID?.startsWith("rzp_live_") ? process.env.RAZORPAY_KEY_ID : "");
+      const liveEnvKeySecret = process.env.RAZORPAY_LIVE_KEY_SECRET || (process.env.RAZORPAY_KEY_ID?.startsWith("rzp_live_") ? process.env.RAZORPAY_KEY_SECRET : "");
+      const liveEnvWebhook = process.env.RAZORPAY_LIVE_WEBHOOK_SECRET || (process.env.RAZORPAY_KEY_ID?.startsWith("rzp_live_") ? process.env.RAZORPAY_WEBHOOK_SECRET : "");
+
+      if ((liveEnvKeyId && !liveEnvKeySecret) || (!liveEnvKeyId && liveEnvKeySecret)) {
+        throw new Error(
+          "Inconsistent environment configuration: RAZORPAY_LIVE_KEY_ID and RAZORPAY_LIVE_KEY_SECRET must both be provided as a matching pair."
+        );
+      }
+
+      if (liveEnvKeyId && liveEnvKeySecret) {
+        // Authoritative environment variables
+        keyId = liveEnvKeyId;
+        keySecret = liveEnvKeySecret;
+        webhookSecret = liveEnvWebhook || decryptSecret(settings.liveWebhookSecretEncrypted) || "";
+      } else {
+        // Fall back to encrypted database settings
+        keyId = settings.liveKeyId || "";
+        keySecret = decryptSecret(settings.liveKeySecretEncrypted) || "";
+        webhookSecret = decryptSecret(settings.liveWebhookSecretEncrypted) || "";
+      }
+
+      // Strict validation for Live Mode
+      if (!keyId || !keySecret) {
+        throw new Error(
+          "Razorpay Live Mode is active but Live credentials are missing. Configure RAZORPAY_LIVE_KEY_ID and RAZORPAY_LIVE_KEY_SECRET or update credentials in the Admin Portal."
+        );
+      }
+      if (!keyId.startsWith("rzp_live_")) {
+        throw new Error(
+          `Inconsistent credentials: Key ID does not match LIVE environment (expected prefix 'rzp_live_', received '${keyId.slice(0, 9)}...').`
+        );
+      }
+      if (keySecret.startsWith("rzp_test_") || keySecret.includes("mock_secret")) {
+        throw new Error("Security Violation: Test secret detected while in Live Mode.");
+      }
+    } else {
+      // TEST Mode with Atomic Pair Validation
+      const testFallbackKey = isVitest ? "rzp_test_lalganj_mock" : "";
+      const testFallbackSecret = isVitest ? "mock_secret_lalganj_2026" : "";
+      const testFallbackWebhook = isVitest ? "mock_webhook_secret_lalganj_2026" : "";
+
+      const testEnvKeyId = process.env.RAZORPAY_TEST_KEY_ID || (!process.env.RAZORPAY_KEY_ID?.startsWith("rzp_live_") ? process.env.RAZORPAY_KEY_ID : "");
+      const testEnvKeySecret = process.env.RAZORPAY_TEST_KEY_SECRET || (!process.env.RAZORPAY_KEY_ID?.startsWith("rzp_live_") ? process.env.RAZORPAY_KEY_SECRET : "");
+      const testEnvWebhook = process.env.RAZORPAY_TEST_WEBHOOK_SECRET || (!process.env.RAZORPAY_KEY_ID?.startsWith("rzp_live_") ? process.env.RAZORPAY_WEBHOOK_SECRET : "");
+
+      if (testEnvKeyId?.startsWith("rzp_live_")) {
+        throw new Error("Inconsistent credentials: Live Key ID detected while running in Test Mode.");
+      }
+
+      if (!isVitest && ((testEnvKeyId && !testEnvKeySecret) || (!testEnvKeyId && testEnvKeySecret))) {
+        throw new Error(
+          "Inconsistent environment configuration: RAZORPAY_TEST_KEY_ID and RAZORPAY_TEST_KEY_SECRET must both be provided as a matching pair."
+        );
+      }
+
+      if (testEnvKeyId && testEnvKeySecret) {
+        keyId = testEnvKeyId;
+        keySecret = testEnvKeySecret;
+        webhookSecret = testEnvWebhook || decryptSecret(settings.testWebhookSecretEncrypted) || testFallbackWebhook;
+      } else {
+        keyId = settings.testKeyId || testFallbackKey;
+        keySecret = decryptSecret(settings.testKeySecretEncrypted) || testFallbackSecret;
+        webhookSecret = decryptSecret(settings.testWebhookSecretEncrypted) || testFallbackWebhook;
+      }
+
+      // Strict validation for Test Mode
+      if (keyId.startsWith("rzp_live_")) {
+        throw new Error("Inconsistent credentials: Live Key ID detected while running in Test Mode.");
+      }
+    }
 
     return {
       keyId,
@@ -6137,14 +6246,26 @@ export const dbRepo = {
           },
         });
 
-        if (existingTx && existingTx.status === PaymentTransactionStatus.SUCCESS && existingTx.gatewayPaymentId === data.razorpayPaymentId) {
-          return {
-            success: true,
-            message: "Payment already verified and processed.",
-            isDuplicate: true,
-            payment: existingTx,
-            appointment: apt,
-          };
+        if (existingTx && existingTx.status === PaymentTransactionStatus.SUCCESS) {
+          if (!data.signatureValid) {
+            // Out-of-order failure event must never regress an already confirmed successful payment
+            return {
+              success: true,
+              message: "Payment already successfully captured. Out-of-order failure event ignored.",
+              isDuplicate: true,
+              payment: existingTx,
+              appointment: apt,
+            };
+          }
+          if (existingTx.gatewayPaymentId === data.razorpayPaymentId) {
+            return {
+              success: true,
+              message: "Payment already verified and processed.",
+              isDuplicate: true,
+              payment: existingTx,
+              appointment: apt,
+            };
+          }
         }
 
         const payment = await prisma.paymentRecord.upsert({
@@ -6349,14 +6470,26 @@ export const dbRepo = {
         p.appointmentId === data.appointmentId
     );
 
-    if (tx && tx.status === PaymentTransactionStatus.SUCCESS && tx.gatewayPaymentId === data.razorpayPaymentId) {
-      return {
-        success: true,
-        message: "Payment already verified and processed.",
-        isDuplicate: true,
-        payment: tx,
-        appointment: apt,
-      };
+    if (tx && tx.status === PaymentTransactionStatus.SUCCESS) {
+      if (!data.signatureValid) {
+        // Out-of-order failure event must never regress an already confirmed successful payment
+        return {
+          success: true,
+          message: "Payment already successfully captured. Out-of-order failure event ignored.",
+          isDuplicate: true,
+          payment: tx,
+          appointment: apt,
+        };
+      }
+      if (tx.gatewayPaymentId === data.razorpayPaymentId) {
+        return {
+          success: true,
+          message: "Payment already verified and processed.",
+          isDuplicate: true,
+          payment: tx,
+          appointment: apt,
+        };
+      }
     }
 
     if (!tx) {
@@ -7621,8 +7754,8 @@ export const dbRepo = {
         return updated;
       } catch (err: any) {
         if (shouldEnforceDurablePersistence()) {
-          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during cancelAppointment:", err);
-          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to cancel appointment in database: ${err.message || "Unknown error"}`);
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during updateCustomerNotes:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to update customer notes in database: ${err.message || "Unknown error"}`);
         }
         isPostgresAvailable = false;
       }
@@ -7642,43 +7775,54 @@ export const dbRepo = {
   // 4. SERVICE CATALOG MANAGEMENT
   // -----------------------------------------------------------
   async createService(data: AdminServiceInput) {
+    const slug = (data.slug || data.name).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+
     if (await canUsePrisma()) {
       try {
+        let categoryId = data.categoryId;
+        if (categoryId) {
+          let cat = await prisma.serviceCategory.findUnique({ where: { id: categoryId } });
+          if (!cat) {
+            cat = await prisma.serviceCategory.findFirst({
+              where: { OR: [{ slug: categoryId }, { slug: "bridal-groom-packages" }] },
+            });
+            if (cat) categoryId = cat.id;
+          }
+        }
+
         const created = await prisma.service.create({
           data: {
             name: data.name,
-            slug: data.slug || data.name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
-            description: data.description,
-            detailedDescription: data.detailedDescription,
+            slug,
+            description: data.description || null,
+            detailedDescription: data.detailedDescription || null,
             price: data.price,
-            discountedPrice: data.discountedPrice,
+            discountedPrice: data.discountedPrice ?? null,
             isStartingPrice: data.isStartingPrice ?? false,
             priceDisplayType: data.priceDisplayType || (data.isStartingPrice ? "STARTING_FROM" : "FIXED"),
-            durationMinutes: data.durationMinutes,
-            gender: data.gender,
-            categoryId: data.categoryId,
-            imageUrl: data.imageUrl,
-            isBridal: data.isBridal ?? (data.categoryId === "cat_6"),
+            durationMinutes: data.durationMinutes ?? 30,
+            gender: data.gender ?? GenderTarget.UNISEX,
+            category: { connect: { id: categoryId } },
+            imageUrl: data.imageUrl || null,
             allowOnlineBooking: data.allowOnlineBooking ?? true,
-            allowAdvancePayment: data.allowAdvancePayment ?? true,
-            minAdvanceAmount: data.minAdvanceAmount ?? 1000,
-            maxAdvanceAmount: data.maxAdvanceAmount ?? 2500,
-            suggestedAdvanceOptions: data.suggestedAdvanceOptions || [1000, 1500, 2000, 2500],
-            allowCustomerSelectAdvance: data.allowCustomerSelectAdvance ?? true,
-            allowFullPayment: data.allowFullPayment ?? true,
-            depositPaymentMode: data.depositPaymentMode || "ADVANCE_OPTIONS",
-            depositType: data.depositType || "FIXED",
-            depositValue: data.depositValue ?? 1000,
+            allowAdvancePayment: data.allowAdvancePayment ?? false,
+            depositType: data.depositType || "NO_DEPOSIT",
+            depositValue: data.depositValue ?? 0,
             bufferTimeMinutes: data.bufferTimeMinutes ?? 0,
             sortOrder: data.sortOrder ?? 0,
             additionalImages: data.additionalImages || data.galleryImages || [],
             isPopular: data.isPopular ?? false,
             isFeatured: data.isFeatured ?? false,
             isActive: data.isActive ?? true,
-          } as any,
+          },
+          include: { category: true },
         });
         return created;
-      } catch {
+      } catch (err: any) {
+        if (shouldEnforceDurablePersistence()) {
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during createService:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to create service in database: ${err.message || "Unknown error"}`);
+        }
         isPostgresAvailable = false;
       }
     }
@@ -7686,15 +7830,15 @@ export const dbRepo = {
     const newSrv: MemoryService = {
       id: `srv_${Date.now()}`,
       name: data.name,
-      slug: data.slug || data.name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+      slug,
       description: data.description || null,
       detailedDescription: data.detailedDescription || null,
       price: data.price,
       discountedPrice: data.discountedPrice || null,
       isStartingPrice: data.isStartingPrice ?? false,
       priceDisplayType: data.priceDisplayType || (data.isStartingPrice ? "STARTING_FROM" : "FIXED"),
-      durationMinutes: data.durationMinutes,
-      gender: data.gender,
+      durationMinutes: data.durationMinutes ?? 30,
+      gender: data.gender ?? GenderTarget.UNISEX,
       categoryId: data.categoryId,
       imageUrl: data.imageUrl || null,
       galleryImages: data.galleryImages || [],
@@ -7726,15 +7870,63 @@ export const dbRepo = {
   async updateService(id: string, data: Partial<AdminServiceInput>) {
     if (await canUsePrisma()) {
       try {
-        const updated = await prisma.service.update({
-          where: { id },
-          data: data as any,
+        const existing = await prisma.service.findFirst({
+          where: { OR: [{ id }, { slug: id }] },
         });
-        return updated;
+
+        if (existing) {
+          let categoryConnect: { connect: { id: string } } | undefined = undefined;
+          if (data.categoryId) {
+            let cat = await prisma.serviceCategory.findUnique({ where: { id: data.categoryId } });
+            if (!cat) {
+              cat = await prisma.serviceCategory.findFirst({
+                where: { OR: [{ slug: data.categoryId }, { slug: "bridal-groom-packages" }] },
+              });
+            }
+            if (cat) {
+              categoryConnect = { connect: { id: cat.id } };
+            }
+          }
+
+          const prismaUpdateData: any = {};
+          if (data.name !== undefined) prismaUpdateData.name = data.name;
+          if (data.slug !== undefined) {
+            prismaUpdateData.slug = data.slug.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+          }
+          if (data.description !== undefined) prismaUpdateData.description = data.description || null;
+          if (data.detailedDescription !== undefined) prismaUpdateData.detailedDescription = data.detailedDescription || null;
+          if (data.price !== undefined) prismaUpdateData.price = data.price;
+          if (data.discountedPrice !== undefined) prismaUpdateData.discountedPrice = data.discountedPrice;
+          if (data.isStartingPrice !== undefined) prismaUpdateData.isStartingPrice = data.isStartingPrice;
+          if (data.priceDisplayType !== undefined) prismaUpdateData.priceDisplayType = data.priceDisplayType;
+          if (data.durationMinutes !== undefined) prismaUpdateData.durationMinutes = data.durationMinutes;
+          if (data.gender !== undefined) prismaUpdateData.gender = data.gender;
+          if (categoryConnect) prismaUpdateData.category = categoryConnect;
+          if (data.imageUrl !== undefined) prismaUpdateData.imageUrl = data.imageUrl || null;
+          if (data.allowOnlineBooking !== undefined) prismaUpdateData.allowOnlineBooking = data.allowOnlineBooking;
+          if (data.allowAdvancePayment !== undefined) prismaUpdateData.allowAdvancePayment = data.allowAdvancePayment;
+          if (data.depositType !== undefined) prismaUpdateData.depositType = data.depositType;
+          if (data.depositValue !== undefined) prismaUpdateData.depositValue = data.depositValue;
+          if (data.bufferTimeMinutes !== undefined) prismaUpdateData.bufferTimeMinutes = data.bufferTimeMinutes;
+          if (data.sortOrder !== undefined) prismaUpdateData.sortOrder = data.sortOrder;
+          if (data.additionalImages !== undefined || data.galleryImages !== undefined) {
+            prismaUpdateData.additionalImages = data.additionalImages || data.galleryImages || [];
+          }
+          if (data.isPopular !== undefined) prismaUpdateData.isPopular = data.isPopular;
+          if (data.isFeatured !== undefined) prismaUpdateData.isFeatured = data.isFeatured;
+          if (data.isActive !== undefined) prismaUpdateData.isActive = data.isActive;
+
+          const updated = await prisma.service.update({
+            where: { id: existing.id },
+            data: prismaUpdateData,
+            include: { category: true },
+          });
+          return updated;
+        }
       } catch (err: any) {
         if (shouldEnforceDurablePersistence()) {
-          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during cancelAppointment:", err);
-          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to cancel appointment in database: ${err.message || "Unknown error"}`);
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during updateService:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to update service in database: ${err.message || "Unknown error"}`);
         }
         isPostgresAvailable = false;
       }
@@ -7742,7 +7934,7 @@ export const dbRepo = {
       throw new Error("DATABASE_PERSISTENCE_FAILED: Database connection to Neon PostgreSQL is unavailable.");
     }
 
-    const srv = memoryDb.services.find((s) => s.id === id);
+    const srv = memoryDb.services.find((s) => s.id === id || s.slug === id);
     if (!srv) throw new Error("Service not found");
     Object.assign(srv, data, { updatedAt: new Date() });
     return srv;
@@ -7751,11 +7943,21 @@ export const dbRepo = {
   async deleteService(id: string) {
     if (await canUsePrisma()) {
       try {
+        const appointmentCount = await prisma.appointmentService.count({ where: { serviceId: id } });
+        if (appointmentCount > 0) {
+          throw new Error(`Cannot delete service: ${appointmentCount} appointment booking(s) reference this service. Please deactivate the service instead.`);
+        }
         await prisma.service.delete({ where: { id } });
         return true;
-      } catch {
+      } catch (err: any) {
+        if (shouldEnforceDurablePersistence() || err.message?.includes("Cannot delete service")) {
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during deleteService:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to delete service in database: ${err.message || "Unknown error"}`);
+        }
         isPostgresAvailable = false;
       }
+    } else if (shouldEnforceDurablePersistence()) {
+      throw new Error("DATABASE_PERSISTENCE_FAILED: Database connection to Neon PostgreSQL is unavailable.");
     }
 
     const idx = memoryDb.services.findIndex((s) => s.id === id);
@@ -7862,8 +8064,8 @@ export const dbRepo = {
         return updated;
       } catch (err: any) {
         if (shouldEnforceDurablePersistence()) {
-          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during cancelAppointment:", err);
-          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to cancel appointment in database: ${err.message || "Unknown error"}`);
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during updateStaff:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to update staff in database: ${err.message || "Unknown error"}`);
         }
         isPostgresAvailable = false;
       }
@@ -7989,8 +8191,8 @@ export const dbRepo = {
         return updated;
       } catch (err: any) {
         if (shouldEnforceDurablePersistence()) {
-          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during cancelAppointment:", err);
-          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to cancel appointment in database: ${err.message || "Unknown error"}`);
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during updateGalleryImage:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to update gallery image in database: ${err.message || "Unknown error"}`);
         }
         isPostgresAvailable = false;
       }
@@ -8212,8 +8414,8 @@ export const dbRepo = {
         return updated;
       } catch (err: any) {
         if (shouldEnforceDurablePersistence()) {
-          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during cancelAppointment:", err);
-          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to cancel appointment in database: ${err.message || "Unknown error"}`);
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during updateReview:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to update review in database: ${err.message || "Unknown error"}`);
         }
         isPostgresAvailable = false;
       }
@@ -8317,8 +8519,8 @@ export const dbRepo = {
         return updated;
       } catch (err: any) {
         if (shouldEnforceDurablePersistence()) {
-          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during cancelAppointment:", err);
-          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to cancel appointment in database: ${err.message || "Unknown error"}`);
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during updateOffer:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to update offer in database: ${err.message || "Unknown error"}`);
         }
         isPostgresAvailable = false;
       }
@@ -8377,9 +8579,15 @@ export const dbRepo = {
           },
         });
         return created;
-      } catch {
+      } catch (err: any) {
+        if (shouldEnforceDurablePersistence()) {
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during createPackage:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to create package in database: ${err.message || "Unknown error"}`);
+        }
         isPostgresAvailable = false;
       }
+    } else if (shouldEnforceDurablePersistence()) {
+      throw new Error("DATABASE_PERSISTENCE_FAILED: Database connection to Neon PostgreSQL is unavailable.");
     }
 
     const newPkg: MemoryPackage = {
@@ -8402,15 +8610,33 @@ export const dbRepo = {
   async updatePackage(id: string, data: Partial<AdminPackageInput>) {
     if (await canUsePrisma()) {
       try {
+        let existing = await prisma.package.findUnique({ where: { id } });
+        if (!existing && data.slug) {
+          existing = await prisma.package.findUnique({ where: { slug: data.slug } });
+        }
+        const targetId = existing ? existing.id : id;
+
+        const prismaData: any = {};
+        if (data.name !== undefined) prismaData.name = data.name;
+        if (data.slug !== undefined) prismaData.slug = data.slug.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+        if (data.description !== undefined) prismaData.description = data.description;
+        if (data.price !== undefined) prismaData.price = Number(data.price);
+        if (data.originalPrice !== undefined) prismaData.originalPrice = Number(data.originalPrice);
+        if (data.durationMinutes !== undefined) prismaData.durationMinutes = Number(data.durationMinutes);
+        if (data.servicesList !== undefined) prismaData.servicesList = Array.isArray(data.servicesList) ? data.servicesList : [data.servicesList];
+        if (data.imageUrl !== undefined) prismaData.imageUrl = data.imageUrl || null;
+        if (data.isFeatured !== undefined) prismaData.isFeatured = Boolean(data.isFeatured);
+        if (data.isActive !== undefined) prismaData.isActive = Boolean(data.isActive);
+
         const updated = await prisma.package.update({
-          where: { id },
-          data: data as any,
+          where: { id: targetId },
+          data: prismaData,
         });
         return updated;
       } catch (err: any) {
         if (shouldEnforceDurablePersistence()) {
-          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during cancelAppointment:", err);
-          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to cancel appointment in database: ${err.message || "Unknown error"}`);
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during updatePackage:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to update package in database: ${err.message || "Unknown error"}`);
         }
         isPostgresAvailable = false;
       }
@@ -8418,7 +8644,7 @@ export const dbRepo = {
       throw new Error("DATABASE_PERSISTENCE_FAILED: Database connection to Neon PostgreSQL is unavailable.");
     }
 
-    const pkg = memoryDb.packages.find((p) => p.id === id);
+    const pkg = memoryDb.packages.find((p) => p.id === id || p.slug === id);
     if (!pkg) throw new Error("Package not found");
     Object.assign(pkg, data);
     return pkg;
@@ -8429,12 +8655,18 @@ export const dbRepo = {
       try {
         await prisma.package.delete({ where: { id } });
         return true;
-      } catch {
+      } catch (err: any) {
+        if (shouldEnforceDurablePersistence()) {
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during deletePackage:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to delete package in database: ${err.message || "Unknown error"}`);
+        }
         isPostgresAvailable = false;
       }
+    } else if (shouldEnforceDurablePersistence()) {
+      throw new Error("DATABASE_PERSISTENCE_FAILED: Database connection to Neon PostgreSQL is unavailable.");
     }
 
-    const idx = memoryDb.packages.findIndex((p) => p.id === id);
+    const idx = memoryDb.packages.findIndex((p) => p.id === id || p.slug === id);
     if (idx !== -1) memoryDb.packages.splice(idx, 1);
     return true;
   },
@@ -8507,8 +8739,8 @@ export const dbRepo = {
         return updated;
       } catch (err: any) {
         if (shouldEnforceDurablePersistence()) {
-          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during cancelAppointment:", err);
-          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to cancel appointment in database: ${err.message || "Unknown error"}`);
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during updateCoupon:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to update coupon in database: ${err.message || "Unknown error"}`);
         }
         isPostgresAvailable = false;
       }
@@ -8608,8 +8840,8 @@ export const dbRepo = {
         return updated;
       } catch (err: any) {
         if (shouldEnforceDurablePersistence()) {
-          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during cancelAppointment:", err);
-          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to cancel appointment in database: ${err.message || "Unknown error"}`);
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during updateVideo:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to update video in database: ${err.message || "Unknown error"}`);
         }
         isPostgresAvailable = false;
       }
@@ -8700,8 +8932,8 @@ export const dbRepo = {
         return updated;
       } catch (err: any) {
         if (shouldEnforceDurablePersistence()) {
-          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during cancelAppointment:", err);
-          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to cancel appointment in database: ${err.message || "Unknown error"}`);
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during updateBrand:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to update brand in database: ${err.message || "Unknown error"}`);
         }
         isPostgresAvailable = false;
       }
@@ -8799,8 +9031,8 @@ export const dbRepo = {
         return updated;
       } catch (err: any) {
         if (shouldEnforceDurablePersistence()) {
-          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during cancelAppointment:", err);
-          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to cancel appointment in database: ${err.message || "Unknown error"}`);
+          console.error("[DATABASE_PERSISTENCE_FAILED] Neon PostgreSQL error during updateFaq:", err);
+          throw new Error(`DATABASE_PERSISTENCE_FAILED: Failed to update FAQ in database: ${err.message || "Unknown error"}`);
         }
         isPostgresAvailable = false;
       }

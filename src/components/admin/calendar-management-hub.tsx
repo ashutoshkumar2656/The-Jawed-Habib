@@ -321,8 +321,8 @@ export function CalendarManagementHub() {
 
             <div className="divide-y divide-zinc-800/60 mt-3 text-xs">
               {appointments.slice(0, 10).map((apt) => (
-                <div key={apt.id} className="py-2.5 flex items-center justify-between hover:bg-zinc-900/30 px-2 rounded-lg">
-                  <div className="flex items-center gap-3">
+                <div key={apt.id} className="py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 hover:bg-zinc-900/30 px-2 rounded-lg">
+                  <div className="flex items-center gap-2.5 flex-wrap">
                     <span className="font-mono text-salon-gold font-bold">{apt.appointmentNumber}</span>
                     <span className="text-white font-medium">
                       {apt.customerProfile?.user?.name || "Client"}
@@ -330,10 +330,13 @@ export function CalendarManagementHub() {
                     <span className="text-zinc-500 font-mono">({apt.customerProfile?.user?.phone || "—"})</span>
                   </div>
 
-                  <div className="flex items-center gap-4">
-                    <span className="text-zinc-300 font-mono">{apt.appointmentDate} at {apt.startTime}</span>
+                  <div className="flex items-center justify-between sm:justify-end gap-3 text-[11px]">
+                    <span className="text-zinc-300 font-mono flex items-center gap-1">
+                      <Clock className="h-3 w-3 text-salon-gold" />
+                      <span>{apt.appointmentDate} at {apt.startTime}</span>
+                    </span>
                     <span
-                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
                         apt.status === "CONFIRMED"
                           ? "bg-blue-950/60 text-blue-400 border border-blue-800/60"
                           : "bg-amber-950/60 text-amber-400 border border-amber-800/60"

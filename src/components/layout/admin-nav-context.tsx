@@ -48,6 +48,28 @@ export function AdminNavProvider({ children }: { children: React.ReactNode }) {
     setIsMobileOpen(false);
   }, []);
 
+  // Lock body scroll and handle Escape key when mobile admin drawer is open
+  React.useEffect(() => {
+    if (isMobileOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isMobileOpen]);
+
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isMobileOpen) {
+        closeMobile();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isMobileOpen, closeMobile]);
+
   return (
     <AdminNavContext.Provider
       value={{

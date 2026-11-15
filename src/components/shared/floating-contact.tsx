@@ -10,7 +10,7 @@ export function FloatingContact() {
   const [isOpen, setIsOpen] = React.useState(false);
 
   return (
-    <div className="fixed bottom-6 left-6 z-40 flex flex-col items-start space-y-3">
+    <div className="fixed bottom-[calc(1.5rem+env(safe-area-inset-bottom,0px))] left-4 sm:left-6 z-40 flex flex-col items-start space-y-3">
       {/* Expanded Menu */}
       {isOpen && (
         <div className="rounded-2xl border border-salon-gold/40 bg-zinc-950/95 p-4 shadow-[0_0_30px_rgba(198,165,107,0.3)] backdrop-blur-xl space-y-3 animate-in slide-in-from-bottom-4 duration-200 min-w-[240px]">

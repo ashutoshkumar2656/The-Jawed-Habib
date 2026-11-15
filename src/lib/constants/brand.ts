@@ -48,6 +48,13 @@ export const BRAND_CONFIG = {
     display: "Monday – Sunday: 10:00 AM – 10:00 PM",
   },
 
+  legal: {
+    businessType: "Hair, Beauty & Salon Services Establishment",
+    jurisdiction: "Lalganj, Vaishali, Bihar, India",
+    gstinStatus: "Pending Owner Confirmation (Unregistered / Composition Scheme)",
+    gstin: process.env.SALON_LEGAL_GSTIN || null,
+  },
+
   assets: {
     logoPrimary: "/brand/jawed-habib/logo-primary.svg",
     logoPrimaryPng: "/brand/jawed-habib/logo-primary.png",

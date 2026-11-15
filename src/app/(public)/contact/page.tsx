@@ -18,6 +18,8 @@ import {
   Calendar,
   MessageSquare,
   CheckCircle2,
+  Mail,
+  Compass,
 } from "lucide-react";
 import { BRAND_CONFIG } from "@/lib/constants/brand";
 
@@ -161,6 +163,32 @@ export default function ContactPage() {
                 </div>
 
                 <div className="flex items-start space-x-4 border-t border-zinc-800/80 pt-4">
+                  <Mail className="h-5 w-5 text-salon-gold mt-1 flex-shrink-0" />
+                  <div className="space-y-1">
+                    <h4 className="font-bold text-white">Business Email</h4>
+                    <a
+                      href={`mailto:${BRAND_CONFIG.contact.email}`}
+                      className="text-salon-gold hover:underline font-mono text-xs sm:text-sm"
+                    >
+                      {BRAND_CONFIG.contact.email}
+                    </a>
+                    <p className="text-[11px] text-zinc-500">
+                      For booking queries, bridal proposals &amp; formal communication.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start space-x-4 border-t border-zinc-800/80 pt-4">
+                  <Compass className="h-5 w-5 text-salon-gold mt-1 flex-shrink-0" />
+                  <div className="space-y-1">
+                    <h4 className="font-bold text-white">Landmark &amp; Directions</h4>
+                    <p className="text-zinc-300 text-xs sm:text-sm leading-relaxed">
+                      Located on the 1st Floor at Tinpulwa Chowk directly above Killer Showroom and directly opposite Manglam Mart. Accessible via stairs with street parking available nearby.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start space-x-4 border-t border-zinc-800/80 pt-4">
                   <Clock className="h-5 w-5 text-salon-gold mt-1 flex-shrink-0" />
                   <div className="space-y-1">
                     <h4 className="font-bold text-white">Operating Timings</h4>
@@ -262,6 +290,7 @@ export default function ContactPage() {
                   </label>
                   <Input
                     required
+                    autoComplete="name"
                     placeholder="e.g. Rahul Sharma"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
@@ -275,6 +304,9 @@ export default function ContactPage() {
                   <Input
                     required
                     type="tel"
+                    inputMode="numeric"
+                    autoComplete="tel"
+                    maxLength={10}
                     placeholder="e.g. 9876543210"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
@@ -288,7 +320,7 @@ export default function ContactPage() {
                   <select
                     value={service}
                     onChange={(e) => setService(e.target.value)}
-                    className="flex h-10 w-full rounded-md border border-salon-borderBlack bg-zinc-950/70 px-3 py-2 text-xs text-salon-ivory focus-visible:outline-none focus-visible:border-salon-gold"
+                    className="flex h-11 sm:h-10 w-full rounded-md border border-salon-borderBlack bg-zinc-950/70 px-3 py-2 text-base sm:text-xs text-salon-ivory focus-visible:outline-none focus-visible:border-salon-gold"
                   >
                     <option value="Haircut & Styling">Haircut & Texture Styling</option>
                     <option value="Hair Spa & Treatments">L&apos;Oréal Hair Spa & Keratin</option>
@@ -309,7 +341,7 @@ export default function ContactPage() {
                     placeholder="Tell us about your hair type, desired timing, or event date..."
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
-                    className="flex w-full rounded-md border border-salon-borderBlack bg-zinc-950/70 px-3 py-2 text-xs text-salon-ivory focus-visible:outline-none focus-visible:border-salon-gold"
+                    className="flex w-full rounded-md border border-salon-borderBlack bg-zinc-950/70 px-3 py-2 text-base sm:text-xs text-salon-ivory focus-visible:outline-none focus-visible:border-salon-gold resize-none"
                   />
                 </div>
 

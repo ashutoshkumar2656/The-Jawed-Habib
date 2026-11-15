@@ -340,7 +340,7 @@ export default async function AdminDashboardPage() {
             <span className="text-[11px] text-zinc-400">Database verified</span>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 pt-2">
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 sm:gap-3 pt-2">
             {(analytics.monthlyTrends || []).map((trend: { month: string; appointments: number; revenue: number }) => {
               const maxApts = Math.max(1, ...(analytics.monthlyTrends || []).map((t: { appointments: number }) => t.appointments));
               const heightPct = Math.max(15, Math.round((trend.appointments / maxApts) * 100));

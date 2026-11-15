@@ -150,6 +150,16 @@ export function AdminSidebar() {
   const pathname = usePathname();
   const { isCollapsed, toggleCollapsed, isMobileOpen, closeMobile } = useAdminNav();
 
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {
+      // Ignore network failure on logout
+    } finally {
+      window.location.href = "/admin/login";
+    }
+  };
+
   // Close mobile drawer on route transition
   React.useEffect(() => {
     closeMobile();
@@ -271,24 +281,45 @@ export function AdminSidebar() {
           {!collapsed ? (
             <div className="flex items-center justify-between text-[11px] text-zinc-500">
               <span className="truncate">Lalganj Admin v1.0</span>
+              <div className="flex items-center gap-3">
+                <Link
+                  href="/"
+                  target="_blank"
+                  className="flex items-center gap-1 text-salon-gold hover:underline"
+                >
+                  <span>Live Site</span>
+                  <ExternalLink className="h-3 w-3" />
+                </Link>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="flex items-center gap-1 text-zinc-400 hover:text-red-400 transition-colors"
+                  title="Sign Out of Salon Admin"
+                >
+                  <LogOut className="h-3 w-3" />
+                  <span>Logout</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-2">
               <Link
                 href="/"
                 target="_blank"
-                className="flex items-center gap-1 text-salon-gold hover:underline"
+                className="flex justify-center text-zinc-500 hover:text-salon-gold p-1"
+                title="Open Public Site"
               >
-                <span>Live Site</span>
-                <ExternalLink className="h-3 w-3" />
+                <ExternalLink className="h-3.5 w-3.5" />
               </Link>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="flex justify-center text-zinc-500 hover:text-red-400 p-1 transition-colors"
+                title="Sign Out of Salon Admin"
+              >
+                <LogOut className="h-3.5 w-3.5" />
+              </button>
             </div>
-          ) : (
-            <Link
-              href="/"
-              target="_blank"
-              className="flex justify-center text-zinc-500 hover:text-salon-gold p-1"
-              title="Open Public Site"
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-            </Link>
           )}
         </div>
       </div>

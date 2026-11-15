@@ -431,7 +431,12 @@ describe("Vercel Hobby Daily Cron & Reservation Expiry Suite", () => {
       expect(memApt).toBeDefined();
       if (memApt) {
         memApt.appointmentDate = todayKolkata;
-        memApt.startTime = "09:00"; // 09:00 AM IST has passed for today
+        const [curH, curM] = getKolkataTimeString().split(":").map(Number);
+        const curTotal = curH * 60 + curM;
+        const pastTotal = Math.max(0, curTotal - 10);
+        const pastH = String(Math.floor(pastTotal / 60)).padStart(2, "0");
+        const pastM = String(pastTotal % 60).padStart(2, "0");
+        memApt.startTime = `${pastH}:${pastM}`;
       }
 
       const res = await emailService.sendAppointmentReminder(futureApt.id);

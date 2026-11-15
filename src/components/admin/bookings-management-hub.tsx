@@ -591,8 +591,8 @@ export function BookingsManagementHub() {
         ))}
       </div>
 
-      {/* Main Table */}
-      <div className="rounded-xl border border-salon-borderBlack bg-salon-richBlack/50 overflow-hidden shadow-lg">
+      {/* Main Table (Desktop / Tablet) */}
+      <div className="hidden md:block rounded-xl border border-salon-borderBlack bg-salon-richBlack/50 overflow-hidden shadow-lg">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="bg-salon-black/80 text-zinc-400 border-b border-salon-borderBlack uppercase tracking-wider text-[10px] font-semibold">
@@ -891,6 +891,238 @@ export function BookingsManagementHub() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* Mobile Booking Cards (Smartphone Screens) */}
+      <div className="block md:hidden space-y-3">
+        {loading ? (
+          <div className="p-8 text-center text-zinc-500 rounded-xl border border-salon-borderBlack bg-salon-richBlack/50">
+            <div className="flex items-center justify-center gap-2">
+              <RotateCcw className="h-4 w-4 animate-spin text-salon-gold" />
+              <span>Loading booking ledger...</span>
+            </div>
+          </div>
+        ) : filteredBookings.length === 0 ? (
+          <div className="p-8 text-center text-zinc-500 rounded-xl border border-salon-borderBlack bg-salon-richBlack/50 text-xs">
+            No appointments found matching your filter criteria.
+          </div>
+        ) : (
+          filteredBookings.map((b) => {
+            const custName = b.customerName || b.customerProfile?.user?.name || "Client";
+            const custPhone = b.customerPhone || b.customerProfile?.user?.phone || "";
+            const srvName =
+              b.package?.name ||
+              (b.appointmentServices && b.appointmentServices[0]?.service?.name) ||
+              "Bridal Suite Service";
+
+            const isPending = b.status === "PENDING";
+            const isConfirmed = b.status === "CONFIRMED";
+            const isCheckedIn = b.status === "CHECKED_IN";
+            const isInProgress = b.status === "IN_PROGRESS";
+            const isCompleted = b.status === "COMPLETED";
+            const isNoShow = b.status === "NO_SHOW";
+            const remainingDue = b.remainingAmount ?? 0;
+            const hasRemaining = remainingDue > 0;
+            const noShowEligibility = checkNoShowEligibility(b.appointmentDate, b.startTime || "10:00");
+
+            return (
+              <div
+                key={b.id}
+                className="rounded-xl border border-salon-borderBlack bg-salon-cardBlack p-4 space-y-3 shadow-md"
+              >
+                {/* Header: Ref + Status */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="font-mono font-bold text-white text-sm">
+                      {b.appointmentNumber}
+                    </span>
+                    <span className="text-[10px] text-zinc-500 ml-2 uppercase font-medium">
+                      {b.source ? b.source.replace(/_/g, " ") : "ONLINE"}
+                    </span>
+                  </div>
+                  <span
+                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                      isCheckedIn
+                        ? "bg-teal-950/60 text-teal-400 border border-teal-800/60"
+                        : isInProgress
+                        ? "bg-indigo-950/60 text-indigo-400 border border-indigo-800/60"
+                        : isConfirmed
+                        ? "bg-blue-950/60 text-blue-400 border border-blue-800/60"
+                        : isPending
+                        ? "bg-amber-950/60 text-amber-400 border border-amber-800/60"
+                        : isCompleted
+                        ? "bg-emerald-950/60 text-emerald-400 border border-emerald-800/60"
+                        : isNoShow
+                        ? "bg-rose-950/60 text-rose-400 border border-rose-800/60"
+                        : "bg-zinc-800 text-zinc-400 border border-zinc-700"
+                    }`}
+                  >
+                    {b.status === "CHECKED_IN"
+                      ? "Arrived"
+                      : b.status === "IN_PROGRESS"
+                      ? "In Chair"
+                      : b.status.replace(/_/g, " ")}
+                  </span>
+                </div>
+
+                {/* Customer Info */}
+                <div className="flex items-center justify-between text-xs border-t border-zinc-800/60 pt-2.5">
+                  <div className="font-semibold text-white">{custName}</div>
+                  {custPhone && (
+                    <div className="flex items-center gap-2 font-mono text-[11px] text-zinc-400">
+                      <a
+                        href={`tel:+91${custPhone.replace(/\D/g, "")}`}
+                        className="flex items-center gap-1 text-salon-gold hover:underline"
+                      >
+                        <Phone className="h-3 w-3" />
+                        <span>{custPhone}</span>
+                      </a>
+                      <a
+                        href={`https://wa.me/91${custPhone.replace(/\D/g, "")}?text=Hello%20${encodeURIComponent(
+                          custName
+                        )},%20regarding%20your%20appointment%20${b.appointmentNumber}%20at%20The%20Jawed%20Habib%20Salon%20Lalganj...`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-emerald-400 p-1 rounded hover:bg-emerald-950/40"
+                        title="WhatsApp"
+                      >
+                        <MessageCircle className="h-3.5 w-3.5" />
+                      </a>
+                    </div>
+                  )}
+                </div>
+
+                {/* Date, Time & Service */}
+                <div className="bg-black/40 rounded-lg p-2.5 space-y-1.5 text-xs border border-zinc-800/60">
+                  <div className="flex items-center justify-between text-zinc-300">
+                    <span className="flex items-center gap-1.5 font-medium">
+                      <Calendar className="h-3.5 w-3.5 text-salon-gold" />
+                      <span>{b.appointmentDate ? b.appointmentDate.split("T")[0] : "—"}</span>
+                    </span>
+                    <span className="flex items-center gap-1 text-zinc-400 font-mono text-[11px]">
+                      <Clock className="h-3 w-3 text-zinc-500" />
+                      <span>{b.startTime} – {b.endTime}</span>
+                    </span>
+                  </div>
+                  <div className="text-zinc-200 font-medium truncate" title={srvName}>
+                    {srvName}
+                  </div>
+                </div>
+
+                {/* Financial Summary */}
+                <div className="flex items-center justify-between text-xs bg-zinc-900/40 rounded-lg px-3 py-2 border border-zinc-800/60">
+                  <div>
+                    <span className="text-[10px] text-zinc-500 uppercase block">Total</span>
+                    <span className="font-mono font-bold text-white">
+                      ₹{(b.totalAmount || 0).toLocaleString("en-IN")}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-zinc-500 uppercase block">Advance</span>
+                    <span className="font-mono font-bold text-emerald-400">
+                      ₹{(b.depositAmount || 0).toLocaleString("en-IN")}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-zinc-500 uppercase block">Balance Due</span>
+                    <span className={`font-mono font-bold ${hasRemaining ? "text-purple-400" : "text-zinc-500"}`}>
+                      ₹{remainingDue.toLocaleString("en-IN")}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Actions Grid */}
+                <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">
+                  {isPending && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={updatingStatusId === b.id}
+                      onClick={() => handleQuickStatusUpdate(b.id, "CONFIRMED")}
+                      className="h-8 px-2.5 text-xs border-emerald-500/40 text-emerald-400 hover:bg-emerald-950/40 gap-1"
+                    >
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      <span>Confirm</span>
+                    </Button>
+                  )}
+                  {isConfirmed && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={updatingStatusId === b.id}
+                      onClick={() => handleQuickStatusUpdate(b.id, "CHECKED_IN")}
+                      className="h-8 px-2.5 text-xs border-teal-500/40 text-teal-400 hover:bg-teal-950/40 gap-1"
+                    >
+                      <UserCheck className="h-3.5 w-3.5" />
+                      <span>Check-In</span>
+                    </Button>
+                  )}
+                  {isCheckedIn && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={updatingStatusId === b.id}
+                      onClick={() => handleQuickStatusUpdate(b.id, "IN_PROGRESS")}
+                      className="h-8 px-2.5 text-xs border-indigo-500/40 text-indigo-400 hover:bg-indigo-950/40 gap-1"
+                    >
+                      <Scissors className="h-3.5 w-3.5" />
+                      <span>Start</span>
+                    </Button>
+                  )}
+                  {isInProgress && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={updatingStatusId === b.id}
+                      onClick={() => handleQuickStatusUpdate(b.id, "COMPLETED")}
+                      className="h-8 px-2.5 text-xs border-emerald-500/40 text-emerald-400 hover:bg-emerald-950/40 gap-1"
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                      <span>Complete</span>
+                    </Button>
+                  )}
+                  {hasRemaining && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setCollectingPaymentBooking(b);
+                        setCollectAmount(b.remainingAmount);
+                      }}
+                      className="h-8 px-2.5 text-xs border-purple-500/40 text-purple-300 hover:bg-purple-950/40"
+                    >
+                      <CreditCard className="h-3.5 w-3.5 mr-1" />
+                      <span>Collect ₹{b.remainingAmount}</span>
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSelectedBooking(b)}
+                    className="h-8 px-2.5 text-xs border-zinc-700 hover:text-white"
+                  >
+                    <Eye className="h-3.5 w-3.5 mr-1" />
+                    <span>Details</span>
+                  </Button>
+                  {(isConfirmed || isPending) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setReschedulingBooking(b);
+                        setNewDate(b.appointmentDate ? b.appointmentDate.split("T")[0] : "");
+                        setNewTime(b.startTime || "11:00");
+                      }}
+                      className="h-8 px-2 text-xs border-zinc-700 hover:text-salon-gold"
+                    >
+                      <CalendarDays className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
 
       {/* Collect Balance Modal */}
